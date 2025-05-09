@@ -44,6 +44,11 @@ interface ScanHistoryItem {
   };
   scan_duration: number;
   scan_status: string;
+  scan_metadata?: {
+    scan_type: string;
+    scan_mode?: string;
+    language?: string;
+  };
 }
 
 const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
@@ -144,6 +149,7 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
           <TableHead>
             <TableRow>
               <TableCell>File Name</TableCell>
+              <TableCell>Scan Type</TableCell>
               <TableCell>Scan Time</TableCell>
               <TableCell>Security Score</TableCell>
               <TableCell>Vulnerabilities</TableCell>
@@ -156,6 +162,37 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
             {history.map((scan) => (
               <TableRow key={scan.id}>
                 <TableCell>{scan.file_name}</TableCell>
+                <TableCell>
+                  <Tooltip
+                    title={
+                      <React.Fragment>
+                        <Typography variant="caption" display="block">
+                          {scan.scan_metadata?.scan_type === 'CodeQL' 
+                            ? `CodeQL Analysis` 
+                            : `Semgrep ${scan.scan_metadata?.scan_mode === 'custom' ? 'Custom Rules' : 'Auto Scan'}`}
+                        </Typography>
+                        {scan.scan_metadata?.language && (
+                          <Typography variant="caption" display="block">
+                            Language: {scan.scan_metadata.language}
+                          </Typography>
+                        )}
+                        {scan.scan_metadata?.scan_mode && (
+                          <Typography variant="caption" display="block">
+                            Mode: {scan.scan_metadata.scan_mode}
+                          </Typography>
+                        )}
+                      </React.Fragment>
+                    }
+                    arrow
+                  >
+                    <Chip
+                      label={scan.scan_metadata?.scan_type === 'CodeQL' ? 'CodeQL' : 'Semgrep'}
+                      color={scan.scan_metadata?.scan_type === 'CodeQL' ? 'secondary' : 'primary'}
+                      size="small"
+                      sx={{ fontWeight: 'medium' }}
+                    />
+                  </Tooltip>
+                </TableCell>
                 <TableCell>
                   {format(new Date(scan.scan_timestamp), 'PPpp')}
                 </TableCell>

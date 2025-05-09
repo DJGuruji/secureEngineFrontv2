@@ -212,58 +212,69 @@ const ScanResults: React.FC<ScanResultsProps> = ({ results }) => {
       <Typography variant="h6" gutterBottom>
         Detailed Findings
       </Typography>
-      <List>
-        {vulnerabilities.map((vuln, index) => (
-          <React.Fragment key={index}>
-            <ListItem alignItems="flex-start">
-              <ListItemText
-                primary={
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <SeverityIcon severity={vuln.extra.severity} />
-                    <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }} component="span">
-                      {vuln.extra.message}
-                    </Typography>
-                  </Box>
-                }
-                secondary={
-                  <>
-                    <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-                      <RiskIndicator severity={vuln.risk_severity} />
-                      <Chip
-                        icon={<BugReportIcon sx={{ fontSize: '1.2rem' }} />}
-                        label={`Exploitability: ${vuln.exploitability}`}
-                        size="small"
-                      />
-                      <Chip
-                        icon={<TimelineIcon sx={{ fontSize: '1.2rem' }} />}
-                        label={`Impact: ${vuln.impact}`}
-                        size="small"
-                      />
+      
+      {/* Show message if no vulnerabilities are present */}
+      {(!vulnerabilities || vulnerabilities.length === 0) && (
+        <Box sx={{ p: 2, textAlign: 'center' }}>
+          <Typography color="text.secondary">No vulnerability details available</Typography>
+        </Box>
+      )}
+      
+      {/* Display vulnerabilities if present */}
+      {vulnerabilities && vulnerabilities.length > 0 && (
+        <List>
+          {vulnerabilities.map((vuln, index) => (
+            <React.Fragment key={index}>
+              <ListItem alignItems="flex-start">
+                <ListItemText
+                  primary={
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <SeverityIcon severity={vuln.extra.severity} />
+                      <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }} component="span">
+                        {vuln.extra.message}
+                      </Typography>
                     </Box>
-                    <Typography
-                      component="span"
-                      variant="body2"
-                      color="text.primary"
-                      sx={{ fontWeight: 'bold' }}
-                    >
-                      {vuln.path}:{vuln.start.line}-{vuln.end.line}
-                    </Typography>
-                    <br />
-                    <Typography component="span" variant="body2" color="text.secondary">
-                      Check ID: {vuln.check_id}
-                    </Typography>
-                    <br />
-                    <Typography component="span" variant="body2" color="text.secondary">
-                      Detected: {isValidDate(vuln.detection_timestamp) ? format(new Date(vuln.detection_timestamp), 'PPpp') : 'N/A'}
-                    </Typography>
-                  </>
-                }
-              />
-            </ListItem>
-            {index < vulnerabilities.length - 1 && <Divider />}
-          </React.Fragment>
-        ))}
-      </List>
+                  }
+                  secondary={
+                    <>
+                      <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+                        <RiskIndicator severity={vuln.risk_severity} />
+                        <Chip
+                          icon={<BugReportIcon sx={{ fontSize: '1.2rem' }} />}
+                          label={`Exploitability: ${vuln.exploitability}`}
+                          size="small"
+                        />
+                        <Chip
+                          icon={<TimelineIcon sx={{ fontSize: '1.2rem' }} />}
+                          label={`Impact: ${vuln.impact}`}
+                          size="small"
+                        />
+                      </Box>
+                      <Typography
+                        component="span"
+                        variant="body2"
+                        color="text.primary"
+                        sx={{ fontWeight: 'bold' }}
+                      >
+                        {vuln.path}:{vuln.start.line}-{vuln.end.line}
+                      </Typography>
+                      <br />
+                      <Typography component="span" variant="body2" color="text.secondary">
+                        Check ID: {vuln.check_id}
+                      </Typography>
+                      <br />
+                      <Typography component="span" variant="body2" color="text.secondary">
+                        Detected: {isValidDate(vuln.detection_timestamp) ? format(new Date(vuln.detection_timestamp), 'PPpp') : 'N/A'}
+                      </Typography>
+                    </>
+                  }
+                />
+              </ListItem>
+              {index < vulnerabilities.length - 1 && <Divider />}
+            </React.Fragment>
+          ))}
+        </List>
+      )}
     </Box>
   );
 };
