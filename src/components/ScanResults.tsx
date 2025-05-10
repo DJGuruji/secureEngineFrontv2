@@ -1,3 +1,4 @@
+// src/components/ScanResults.tsx
 import React from 'react';
 import {
   Box,
@@ -22,6 +23,37 @@ import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import TimerIcon from '@mui/icons-material/Timer';
 import { format } from 'date-fns';
 
+/* ------------------------------------------------------------------ */
+/*  helpers                                                           */
+/* ------------------------------------------------------------------ */
+
+const SeverityIcon = ({ severity }: { severity: string }) => {
+  switch (severity) {
+    case 'ERROR':
+      return <ErrorIcon color="error" />;
+    case 'WARNING':
+      return <WarningIcon color="warning" />;
+    default:
+      return <InfoIcon color="info" />;
+  }
+};
+
+const RiskIndicator = ({ severity }: { severity: number }) => {
+  const getColor = (v: number) => (v >= 0.8 ? 'error' : v >= 0.5 ? 'warning' : 'info');
+  return (
+    <Chip
+      icon={<SecurityIcon />}
+      label={`Risk: ${(severity * 100).toFixed(0)}%`}
+      color={getColor(severity)}
+      size="small"
+    />
+  );
+};
+
+/* ------------------------------------------------------------------ */
+/*  main component                                                    */
+/* ------------------------------------------------------------------ */
+
 interface ScanResultsProps {
   results: {
     security_score: number;
@@ -30,20 +62,13 @@ interface ScanResultsProps {
       path: string;
       start: { line: number };
       end: { line: number };
-      extra: {
-        message: string;
-        severity: string;
-      };
+      extra: { message: string; severity: string };
       risk_severity: number;
       exploitability: string;
       impact: string;
       detection_timestamp: string;
     }>;
-    severity_count: {
-      ERROR: number;
-      WARNING: number;
-      INFO: number;
-    };
+    severity_count: { ERROR: number; WARNING: number; INFO: number };
     scan_timestamp?: string;
     scan_duration?: number;
     scan_metadata?: {
@@ -55,38 +80,7 @@ interface ScanResultsProps {
       scan_mode?: string;
     };
   };
-  onClose?: () => void;
 }
-
-const SeverityIcon = ({ severity }: { severity: string }) => {
-  switch (severity) {
-    case 'ERROR':
-      return <ErrorIcon color="error" />;
-    case 'WARNING':
-      return <WarningIcon color="warning" />;
-    case 'INFO':
-      return <InfoIcon color="info" />;
-    default:
-      return <InfoIcon color="info" />;
-  }
-};
-
-const RiskIndicator = ({ severity }: { severity: number }) => {
-  const getColor = (severity: number) => {
-    if (severity >= 0.8) return 'error';
-    if (severity >= 0.5) return 'warning';
-    return 'info';
-  };
-
-  return (
-    <Chip
-      icon={<SecurityIcon />}
-      label={`Risk: ${(severity * 100).toFixed(0)}%`}
-      color={getColor(severity)}
-      size="small"
-    />
-  );
-};
 
 const ScanResults: React.FC<ScanResultsProps> = ({ results }) => {
   const {
@@ -95,41 +89,44 @@ const ScanResults: React.FC<ScanResultsProps> = ({ results }) => {
     severity_count,
     scan_timestamp,
     scan_duration,
-    scan_metadata
+    scan_metadata,
   } = results;
 
-  const formatDuration = (seconds?: number) => {
-    if (typeof seconds !== 'number' || isNaN(seconds)) return 'N/A';
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = Math.round(seconds % 60);
-    return `${minutes}m ${remainingSeconds}s`;
+  /* utilities */
+  const formatDuration = (secs?: number) => {
+    if (!secs && secs !== 0) return 'N/A';
+    const m = Math.floor(secs / 60);
+    const s = Math.round(secs % 60);
+    return `${m}m ${s}s`;
   };
+  const validDate = (d?: string) => (d && !isNaN(Date.parse(d)) ? new Date(d) : undefined);
 
-  const isValidDate = (dateStr?: string) => {
-    if (!dateStr) return false;
-    const d = new Date(dateStr);
-    return !isNaN(d.getTime());
-  };
+  /* ------------------------------------------------------------------ */
+  /* render                                                             */
+  /* ------------------------------------------------------------------ */
 
   return (
     <Box>
+      {/* ---------- top summary cards ---------- */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
+        {/* security score */}
         <Grid item xs={12} md={6}>
           <Paper elevation={3} sx={{ p: 3, textAlign: 'center' }}>
             <Typography variant="h6" gutterBottom>
               Security Score
             </Typography>
+
             <Box
               sx={{
+                position: 'relative',
                 display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
                 width: 120,
                 height: 120,
                 borderRadius: '50%',
                 bgcolor: 'primary.main',
                 color: 'white',
-                position: 'relative',
+                justifyContent: 'center',
+                alignItems: 'center',
               }}
             >
               <CircularProgress
@@ -137,11 +134,7 @@ const ScanResults: React.FC<ScanResultsProps> = ({ results }) => {
                 value={security_score * 10}
                 size={120}
                 thickness={4}
-                sx={{
-                  position: 'absolute',
-                  color: 'white',
-                  opacity: 0.3,
-                }}
+                sx={{ position: 'absolute', color: 'white', opacity: 0.25 }}
               />
               <Typography variant="h3" component="div">
                 {security_score}/10
@@ -149,34 +142,41 @@ const ScanResults: React.FC<ScanResultsProps> = ({ results }) => {
             </Box>
           </Paper>
         </Grid>
+
+        {/* scan info */}
         <Grid item xs={12} md={6}>
           <Paper elevation={3} sx={{ p: 3 }}>
             <Typography variant="h6" gutterBottom>
               Scan Information
             </Typography>
+
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <CalendarTodayIcon color="action" />
                 <Typography variant="body1">
-                  Date: {isValidDate(scan_timestamp) ? format(new Date(scan_timestamp!), 'PPP') : 'N/A'}
+                  Date:{' '}
+                  {validDate(scan_timestamp)
+                    ? format(validDate(scan_timestamp)!, 'PPP')
+                    : 'N/A'}
                 </Typography>
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <AccessTimeIcon color="action" />
                 <Typography variant="body1">
-                  Time: {isValidDate(scan_timestamp) ? format(new Date(scan_timestamp!), 'p') : 'N/A'}
+                  Time:{' '}
+                  {validDate(scan_timestamp)
+                    ? format(validDate(scan_timestamp)!, 'p')
+                    : 'N/A'}
                 </Typography>
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <TimerIcon color="action" />
-                <Typography variant="body1">
-                  Duration: {formatDuration(scan_duration)}
-                </Typography>
+                <Typography variant="body1">Duration: {formatDuration(scan_duration)}</Typography>
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <SecurityIcon color="action" />
                 <Typography variant="body1">
-                  Scan Type: {scan_metadata?.scan_type || 'SAST'}
+                  Scan Type: {scan_metadata?.scan_type ?? 'SAST'}
                 </Typography>
               </Box>
             </Box>
@@ -184,60 +184,47 @@ const ScanResults: React.FC<ScanResultsProps> = ({ results }) => {
         </Grid>
       </Grid>
 
+      {/* ---------- vulnerability summary ---------- */}
       <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
         <Typography variant="h6" gutterBottom>
           Vulnerability Summary
         </Typography>
-        <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-          <Chip
-            icon={<ErrorIcon />}
-            label={`${severity_count.ERROR || 0} Vulnerabilities`}
-            color="error"
-          />
-          <Chip
-            icon={<WarningIcon />}
-            label={`${severity_count.WARNING || 0} Warnings`}
-            color="warning"
-          />
-          <Chip
-            icon={<InfoIcon />}
-            label={`${severity_count.INFO || 0} Info`}
-            color="info"
-          />
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Chip icon={<ErrorIcon />} label={`${severity_count.ERROR} Vulnerabilities`} color="error" />
+          <Chip icon={<WarningIcon />} label={`${severity_count.WARNING} Warnings`} color="warning" />
+          <Chip icon={<InfoIcon />} label={`${severity_count.INFO} Info`} color="info" />
         </Box>
       </Paper>
 
       <Divider sx={{ my: 2 }} />
 
+      {/* ---------- detailed findings ---------- */}
       <Typography variant="h6" gutterBottom>
         Detailed Findings
       </Typography>
-      
-      {/* Show message if no vulnerabilities are present */}
-      {(!vulnerabilities || vulnerabilities.length === 0) && (
+
+      {(!vulnerabilities || vulnerabilities.length === 0) ? (
         <Box sx={{ p: 2, textAlign: 'center' }}>
           <Typography color="text.secondary">No vulnerability details available</Typography>
         </Box>
-      )}
-      
-      {/* Display vulnerabilities if present */}
-      {vulnerabilities && vulnerabilities.length > 0 && (
+      ) : (
         <List>
-          {vulnerabilities.map((vuln, index) => (
-            <React.Fragment key={index}>
+          {vulnerabilities.map((vuln, idx) => (
+            <React.Fragment key={idx}>
               <ListItem alignItems="flex-start">
                 <ListItemText
+                  disableTypography          /* ✨ <— crucial line */
                   primary={
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <SeverityIcon severity={vuln.extra.severity} />
-                      <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }} component="span">
+                      <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
                         {vuln.extra.message}
                       </Typography>
                     </Box>
                   }
                   secondary={
-                    <>
-                      <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+                    <Box sx={{ mt: 0.5 }}>
+                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1 }}>
                         <RiskIndicator severity={vuln.risk_severity} />
                         <Chip
                           icon={<BugReportIcon sx={{ fontSize: '1.2rem' }} />}
@@ -250,27 +237,24 @@ const ScanResults: React.FC<ScanResultsProps> = ({ results }) => {
                           size="small"
                         />
                       </Box>
-                      <Typography
-                        component="span"
-                        variant="body2"
-                        color="text.primary"
-                        sx={{ fontWeight: 'bold' }}
-                      >
+
+                      <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
                         {vuln.path}:{vuln.start.line}-{vuln.end.line}
                       </Typography>
-                      <br />
-                      <Typography component="span" variant="body2" color="text.secondary">
+                      <Typography variant="body2" color="text.secondary">
                         Check ID: {vuln.check_id}
                       </Typography>
-                      <br />
-                      <Typography component="span" variant="body2" color="text.secondary">
-                        Detected: {isValidDate(vuln.detection_timestamp) ? format(new Date(vuln.detection_timestamp), 'PPpp') : 'N/A'}
+                      <Typography variant="body2" color="text.secondary">
+                        Detected:{' '}
+                        {validDate(vuln.detection_timestamp)
+                          ? format(validDate(vuln.detection_timestamp)!, 'PPpp')
+                          : 'N/A'}
                       </Typography>
-                    </>
+                    </Box>
                   }
                 />
               </ListItem>
-              {index < vulnerabilities.length - 1 && <Divider />}
+              {idx < vulnerabilities.length - 1 && <Divider component="li" />}
             </React.Fragment>
           ))}
         </List>

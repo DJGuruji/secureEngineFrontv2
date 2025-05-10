@@ -47,6 +47,7 @@ interface Vulnerability {
 const API_UPLOAD_URL = 'http://localhost:8000/api/v1/scan/upload';
 const API_SCAN_URL = 'http://localhost:8000/api/v1/scan/scan';
 const API_CODEQL_URL = 'http://localhost:8000/api/v1/scan/codeql';
+const API_SHIFTLEFT_URL = 'http://localhost:8000/api/v1/scan/shiftleft';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -78,17 +79,12 @@ function App() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [scanResults, setScanResults] = useState<any>(null);
-  
-  // Loading states for different scan stages:
-  // - loadingSastUpload: When uploading a file for SAST scanning
-  // - loadingSastProcessing: When processing a SAST scan on the server
-  // - loadingCodeQLUpload: When uploading a file for CodeQL scanning
-  // - loadingCodeQLProcessing: When running CodeQL analysis on the server
-  // This allows for more specific loading indicators in the UI
   const [loadingSastUpload, setLoadingSastUpload] = useState(false);
   const [loadingCodeQLUpload, setLoadingCodeQLUpload] = useState(false);
+  const [loadingShiftLeftUpload, setLoadingShiftLeftUpload] = useState(false);
   const [loadingSastProcessing, setLoadingSastProcessing] = useState(false);
   const [loadingCodeQLProcessing, setLoadingCodeQLProcessing] = useState(false);
+  const [loadingShiftLeftProcessing, setLoadingShiftLeftProcessing] = useState(false);
   
   const [error, setError] = useState<string | null>(null);
   const [tabValue, setTabValue] = useState(0);
@@ -102,7 +98,8 @@ function App() {
   // Computed properties for loading states
   const isSastLoading = loadingSastUpload || loadingSastProcessing;
   const isCodeQLLoading = loadingCodeQLUpload || loadingCodeQLProcessing;
-  const isAnyScanLoading = isSastLoading || isCodeQLLoading;
+  const isShiftLeftLoading = loadingShiftLeftUpload || loadingShiftLeftProcessing;
+  const isAnyScanLoading = isSastLoading || isCodeQLLoading || isShiftLeftLoading;
 
   // Define the pulse animation keyframes
   const pulseAnimation = keyframes`
@@ -291,6 +288,55 @@ function App() {
     }
   };
 
+  const startShiftLeftScan = async () => {
+    if (!uploadedFile) return;
+    
+    try {
+      // Reset states at the start
+      setError(null);
+      setScanStarted(true);
+      
+      // First set upload state
+      setLoadingShiftLeftUpload(true);
+      setLoadingShiftLeftProcessing(false);
+      
+      const formData = new FormData();
+      formData.append('file', uploadedFile);
+  
+      // Upload file
+      const response = await fetch(API_SHIFTLEFT_URL, {
+        method: 'POST',
+        body: formData,
+      });
+      
+      // Switch from upload to processing state
+      setLoadingShiftLeftUpload(false);
+      setLoadingShiftLeftProcessing(true);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to scan file with ShiftLeft');
+      }
+      
+      const data = await response.json();
+      
+      // Ensure processing state is visible for at least 1 second
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Update the results
+      setScanResults(data);
+      setDialogOpen(true);
+      
+      // Then clear the processing state after dialog is opened
+      setLoadingShiftLeftProcessing(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+      // Clear all loading states in case of error
+      setLoadingShiftLeftUpload(false);
+      setLoadingShiftLeftProcessing(false);
+    }
+  };
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
@@ -424,7 +470,7 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                     color="primary" 
                     size="large" 
                     onClick={startScan} 
-                    disabled={isAnyScanLoading || (ruleType === 'custom' && (!customRule || !!customRuleError))}
+                    disabled={isSastLoading || (ruleType === 'custom' && (!customRule || !!customRuleError))}
                     sx={loadingSastProcessing ? processingButtonStyle : loadingSastUpload ? uploadingButtonStyle : {}}
                   >
                     {loadingSastUpload ? (
@@ -444,7 +490,7 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                     color="secondary"
                     size="large"
                     onClick={startCodeQLScan}
-                    disabled={isAnyScanLoading}
+                    disabled={isCodeQLLoading || (ruleType === 'custom' && (!customRule || !!customRuleError))}
                     sx={loadingCodeQLProcessing ? processingButtonStyle : loadingCodeQLUpload ? uploadingButtonStyle : {}}
                   >
                     {loadingCodeQLUpload ? (
@@ -458,6 +504,26 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                         Running CodeQL...
                       </Box>
                     ) : 'Run CodeQL'}
+                  </Button>
+                  <Button
+                    variant="contained"
+                    color="success"
+                    size="large"
+                    onClick={startShiftLeftScan}
+                    disabled={isShiftLeftLoading}
+                    sx={loadingShiftLeftProcessing ? processingButtonStyle : loadingShiftLeftUpload ? uploadingButtonStyle : {}}
+                  >
+                    {loadingShiftLeftUpload ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <CircularProgress size={16} color="inherit" />
+                        Uploading File...
+                      </Box>
+                    ) : loadingShiftLeftProcessing ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <CircularProgress size={20} color="inherit" />
+                        Running ShiftLeft...
+                      </Box>
+                    ) : 'Run ShiftLeft'}
                   </Button>
                 </Box>
               </Box>
@@ -509,6 +575,7 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                 {loadingSastUpload ? 'Uploading file for Semgrep scan...' : 
                  loadingSastProcessing ? 'Running Semgrep security analysis...' : 
                  loadingCodeQLUpload ? 'Uploading file for CodeQL scan...' : 
+                 loadingShiftLeftUpload ? 'Uploading file for ShiftLeft scan...' : 
                  'Running CodeQL security analysis...'}
               </Typography>
             </Box>
