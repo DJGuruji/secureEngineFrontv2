@@ -101,6 +101,9 @@ function App() {
   const isCodeQLLoading = loadingCodeQLUpload || loadingCodeQLProcessing;
   const isShiftLeftLoading = loadingShiftLeftUpload || loadingShiftLeftProcessing;
   const isAnyScanLoading = isSastLoading || isCodeQLLoading || isShiftLeftLoading;
+  
+  // New state to track if "Run All SAST" is specifically running
+  const [runningAllSast, setRunningAllSast] = useState(false);
 
   // Define the pulse animation keyframes
   const pulseAnimation = keyframes`
@@ -403,6 +406,118 @@ const classifyVulns = (vulns: Vulnerability[]) => {
     setScanResults(null);
   };
 
+  // Add a function to run all scanners
+  const runAllScanners = async () => {
+    if (!uploadedFile) return;
+    
+    setError(null);
+    setScanStarted(true);
+    setRunningAllSast(true);
+    
+    try {
+      // Run Semgrep scan first
+      setLoadingSastUpload(true);
+      
+      const semgrepFormData = new FormData();
+      semgrepFormData.append('file', uploadedFile);
+      
+      if (ruleType === 'custom' && customRule) {
+        semgrepFormData.append('custom_rule', customRule);
+      }
+      
+      // Semgrep upload
+      const semgrepResponse = await fetch(API_UPLOAD_URL, {
+        method: 'POST',
+        body: semgrepFormData,
+      });
+      
+      setLoadingSastUpload(false);
+      setLoadingSastProcessing(true);
+      
+      if (!semgrepResponse.ok) {
+        const errorData = await semgrepResponse.json();
+        throw new Error(errorData.detail || 'Failed to run Semgrep scan');
+      }
+      
+      const semgrepData = await semgrepResponse.json();
+      const semgrepResults = semgrepData;
+      
+      // Allow UI to update for a moment
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Transition to ShiftLeft scan
+      setLoadingSastProcessing(false);
+      setLoadingShiftLeftUpload(true);
+      
+      const shiftleftFormData = new FormData();
+      shiftleftFormData.append('file', uploadedFile);
+      
+      // ShiftLeft upload
+      const shiftleftResponse = await fetch(API_SHIFTLEFT_URL, {
+        method: 'POST',
+        body: shiftleftFormData,
+      });
+      
+      setLoadingShiftLeftUpload(false);
+      setLoadingShiftLeftProcessing(true);
+      
+      if (!shiftleftResponse.ok) {
+        const errorData = await shiftleftResponse.json();
+        throw new Error(errorData.detail || 'Failed to run ShiftLeft scan');
+      }
+      
+      const shiftleftData = await shiftleftResponse.json();
+      const shiftleftResults = shiftleftData;
+      
+      // Allow UI to update for a moment
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Transition to CodeQL scan
+      setLoadingShiftLeftProcessing(false);
+      setLoadingCodeQLUpload(true);
+      
+      const codeqlFormData = new FormData();
+      codeqlFormData.append('file', uploadedFile);
+      
+      // CodeQL upload
+      const codeqlResponse = await fetch(API_CODEQL_URL, {
+        method: 'POST',
+        body: codeqlFormData,
+      });
+      
+      setLoadingCodeQLUpload(false);
+      setLoadingCodeQLProcessing(true);
+      
+      if (!codeqlResponse.ok) {
+        const errorData = await codeqlResponse.json();
+        throw new Error(errorData.detail || 'Failed to run CodeQL scan');
+      }
+      
+      const codeqlData = await codeqlResponse.json();
+      
+      // Clear all loading states
+      setLoadingCodeQLProcessing(false);
+      
+      // Combine results - for now, use the last scan's results
+      // A more advanced implementation could combine all results
+      setScanResults(codeqlData);
+      setDialogOpen(true);
+      
+    } catch (err) {
+      // Clear all loading states in case of error
+      setLoadingSastUpload(false);
+      setLoadingSastProcessing(false);
+      setLoadingCodeQLUpload(false);
+      setLoadingCodeQLProcessing(false);
+      setLoadingShiftLeftUpload(false);
+      setLoadingShiftLeftProcessing(false);
+      
+      setError(err instanceof Error ? err.message : 'An error occurred running scans');
+    } finally {
+      setRunningAllSast(false);
+    }
+  };
+
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       <Box sx={{ mb: 4 }}>
@@ -488,6 +603,26 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                   </Button>
                   <Button
                     variant="contained"
+                    color="success"
+                    size="large"
+                    onClick={startShiftLeftScan}
+                    disabled={isShiftLeftLoading}
+                    sx={loadingShiftLeftProcessing ? processingButtonStyle : loadingShiftLeftUpload ? uploadingButtonStyle : {}}
+                  >
+                    {loadingShiftLeftUpload ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <CircularProgress size={16} color="inherit" />
+                        Uploading File...
+                      </Box>
+                    ) : loadingShiftLeftProcessing ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <CircularProgress size={20} color="inherit" />
+                        Running ShiftLeft...
+                      </Box>
+                    ) : 'Run ShiftLeft'}
+                  </Button>
+                  <Button
+                    variant="contained"
                     color="secondary"
                     size="large"
                     onClick={startCodeQLScan}
@@ -508,23 +643,21 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                   </Button>
                   <Button
                     variant="contained"
-                    color="success"
+                    color="info"
                     size="large"
-                    onClick={startShiftLeftScan}
-                    disabled={isShiftLeftLoading}
-                    sx={loadingShiftLeftProcessing ? processingButtonStyle : loadingShiftLeftUpload ? uploadingButtonStyle : {}}
+                    onClick={runAllScanners}
+                    disabled={isAnyScanLoading}
+                    sx={{
+                      background: 'linear-gradient(45deg, #2196F3 30%, #9c27b0 70%, #4CAF50 100%)',
+                      ...(runningAllSast ? processingButtonStyle : {})
+                    }}
                   >
-                    {loadingShiftLeftUpload ? (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <CircularProgress size={16} color="inherit" />
-                        Uploading File...
-                      </Box>
-                    ) : loadingShiftLeftProcessing ? (
+                    {runningAllSast ? (
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <CircularProgress size={20} color="inherit" />
-                        Running ShiftLeft...
+                        Running All Scanners...
                       </Box>
-                    ) : 'Run ShiftLeft'}
+                    ) : 'Run All SAST'}
                   </Button>
                 </Box>
               </Box>
@@ -576,8 +709,9 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                 {loadingSastUpload ? 'Uploading file for Semgrep scan...' : 
                  loadingSastProcessing ? 'Running Semgrep security analysis...' : 
                  loadingCodeQLUpload ? 'Uploading file for CodeQL scan...' : 
+                 loadingCodeQLProcessing ? 'Running CodeQL security analysis...' : 
                  loadingShiftLeftUpload ? 'Uploading file for ShiftLeft scan...' : 
-                 'Running CodeQL security analysis...'}
+                 'Running ShiftLeft security analysis...'}
               </Typography>
             </Box>
           ) : scanResults && (
