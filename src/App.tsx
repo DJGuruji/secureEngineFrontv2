@@ -48,6 +48,7 @@ const API_UPLOAD_URL = 'http://localhost:8000/api/v1/scan/upload';
 const API_SCAN_URL = 'http://localhost:8000/api/v1/scan/scan';
 const API_CODEQL_URL = 'http://localhost:8000/api/v1/scan/codeql';
 const API_SHIFTLEFT_URL = 'http://localhost:8000/api/v1/scan/shiftleft';
+const API_COMPARE_URL = 'http://localhost:8000/api/v1/scan/compare';
 
 interface TabPanelProps {
   children?: React.ReactNode;

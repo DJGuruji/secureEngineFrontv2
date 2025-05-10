@@ -20,6 +20,13 @@ import {
   DialogActions,
   Button,
   CircularProgress,
+  List,
+  ListItem,
+  ListItemText,
+  Link,
+  Alert,
+  AlertTitle,
+  Grid,
 } from '@mui/material';
 import { format } from 'date-fns';
 import VisibilityIcon from '@mui/icons-material/Visibility';
@@ -27,7 +34,12 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import ErrorIcon from '@mui/icons-material/Error';
 import WarningIcon from '@mui/icons-material/Warning';
 import InfoIcon from '@mui/icons-material/Info';
+import CompareIcon from '@mui/icons-material/Compare';
+import SecurityIcon from '@mui/icons-material/Security';
 import axios from 'axios';
+
+// Use API endpoint constants from App.tsx
+const API_BASE_URL = 'http://localhost:8000/api/v1/scan';
 
 interface ScanHistoryProps {
   onViewScan: (scanId: string) => void;
@@ -53,6 +65,50 @@ interface ScanHistoryItem {
   };
 }
 
+interface ComparisonResult {
+  scan_id: string;
+  file_name: string;
+  vulnerability_count: number;
+  matched_patterns: string[];
+  file_in_exploitdb: boolean;
+  exploitdb_results: ExploitDbResult[];
+  exploitdb_id?: string;
+  comparison_timestamp: string;
+  vulnerabilities?: Array<{
+    check_id: string;
+    path: string;
+    message: string;
+    severity: string;
+    extra?: {
+      severity?: string;
+    };
+    matching_exploitdb_vulnerabilities?: Array<{
+      type: string;
+      description: string;
+      exploit_id: string;
+      confidence: string;
+    }>;
+  }>;
+}
+
+interface ExploitDbResult {
+  title: string;
+  exploit_id: string;
+  description: string;
+  date: string;
+  author: string;
+  type: string;
+  platform: string;
+  link: string;
+  vulnerabilities?: Array<{
+    type: string;
+    description: string;
+  }>;
+  cve?: string;
+  notes?: string;
+  verified?: boolean;
+}
+
 const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
   const [history, setHistory] = useState<ScanHistoryItem[]>([]);
   const [page, setPage] = useState(0);
@@ -61,6 +117,9 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
   const [loading, setLoading] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedScanId, setSelectedScanId] = useState<string | null>(null);
+  const [compareDialogOpen, setCompareDialogOpen] = useState(false);
+  const [comparisonResult, setComparisonResult] = useState<ComparisonResult | null>(null);
+  const [loadingComparison, setLoadingComparison] = useState(false);
 
   /* ------------------------------------------------------------------ */
   /* API helpers                                                         */
@@ -71,7 +130,7 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
       const { data } = await axios.get<{
         items: ScanHistoryItem[];
         total: number;
-      }>('http://localhost:8000/api/v1/scan/history', {
+      }>(`${API_BASE_URL}/history`, {
         params: { limit: rowsPerPage, offset: page * rowsPerPage },
       });
 
@@ -93,7 +152,7 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
   const deleteScan = async (scanId: string) => {
     try {
       await axios.delete(
-        `http://localhost:8000/api/v1/scan/scan/${scanId}`
+        `${API_BASE_URL}/scan/${scanId}`
       );
       await fetchHistory(); // refresh
     } catch (err: any) {
@@ -102,6 +161,25 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
         err?.response?.data?.detail ??
           'Failed to delete scan. Please try again.'
       );
+    }
+  };
+
+  const compareWithExploitDb = async (scanId: string) => {
+    setLoadingComparison(true);
+    try {
+      const { data } = await axios.get<ComparisonResult>(
+        `${API_BASE_URL}/compare/${scanId}`
+      );
+      setComparisonResult(data);
+      setCompareDialogOpen(true);
+    } catch (err: any) {
+      console.error('Error comparing with Exploit DB:', err);
+      alert(
+        err?.response?.data?.detail ??
+          'Failed to compare with Exploit DB. Please try again.'
+      );
+    } finally {
+      setLoadingComparison(false);
     }
   };
 
@@ -135,6 +213,16 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
     await deleteScan(selectedScanId);
     setDeleteDialogOpen(false);
     setSelectedScanId(null);
+  };
+
+  const handleCompareClick = (scanId: string) => {
+    setSelectedScanId(scanId);
+    compareWithExploitDb(scanId);
+  };
+
+  const handleCloseCompareDialog = () => {
+    setCompareDialogOpen(false);
+    setComparisonResult(null);
   };
 
   /* ------------------------------------------------------------------ */
@@ -197,7 +285,7 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
               <TableCell>Vulnerabilities</TableCell>
               <TableCell>Duration</TableCell>
               <TableCell>Status</TableCell>
-              <TableCell width={120}>Actions</TableCell>
+              <TableCell width={180}>Actions</TableCell>
             </TableRow>
           </TableHead>
 
@@ -315,17 +403,33 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
 
                 {/* ---------------- Actions ---------------- */}
                 <TableCell>
-                  <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Tooltip title="View details">
+                  <Box sx={{ display: 'flex' }}>
+                    <Tooltip title="View Scan Results">
                       <IconButton
                         size="small"
+                        color="primary"
                         onClick={() => onViewScan(scan.id)}
                       >
                         <VisibilityIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
-
-                    <Tooltip title="Delete scan">
+                    
+                    <Tooltip title="Compare with Exploit DB">
+                      <IconButton
+                        size="small"
+                        color="secondary"
+                        onClick={() => handleCompareClick(scan.id)}
+                        disabled={loadingComparison && selectedScanId === scan.id}
+                      >
+                        {loadingComparison && selectedScanId === scan.id ? (
+                          <CircularProgress size={18} />
+                        ) : (
+                          <CompareIcon fontSize="small" />
+                        )}
+                      </IconButton>
+                    </Tooltip>
+                    
+                    <Tooltip title="Delete Scan">
                       <IconButton
                         size="small"
                         color="error"
@@ -343,23 +447,25 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
             {!loading && history.length === 0 && (
               <TableRow>
                 <TableCell colSpan={8} align="center">
-                  No scans found.
+                  <Typography variant="body2" color="textSecondary" py={2}>
+                    No scan history found
+                  </Typography>
                 </TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
-      </TableContainer>
 
-      {/* ---------------- Pagination ---------------- */}
-      <TablePagination
-        component="div"
-        page={page}
-        count={totalCount}
-        onPageChange={handleChangePage}
-        rowsPerPage={rowsPerPage}
-        onRowsPerPageChange={handleChangeRowsPerPage}
-      />
+        <TablePagination
+          rowsPerPageOptions={[5, 10, 25]}
+          component="div"
+          count={totalCount}
+          rowsPerPage={rowsPerPage}
+          page={page}
+          onPageChange={handleChangePage}
+          onRowsPerPageChange={handleChangeRowsPerPage}
+        />
+      </TableContainer>
 
       {/* ---------------- Delete dialog ---------------- */}
       <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
@@ -379,6 +485,268 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
           >
             Delete
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Exploit DB Comparison Dialog */}
+      <Dialog 
+        open={compareDialogOpen} 
+        onClose={handleCloseCompareDialog}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box display="flex" alignItems="center">
+            <SecurityIcon sx={{ mr: 1 }} color="secondary" />
+            Exploit DB Comparison Results
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {loadingComparison ? (
+            <Box display="flex" justifyContent="center" my={4}>
+              <CircularProgress />
+            </Box>
+          ) : comparisonResult ? (
+            <Box>
+              <Typography variant="subtitle1" gutterBottom>
+                File: {comparisonResult.file_name}
+              </Typography>
+              
+              {comparisonResult.exploitdb_id && (
+                <Alert severity="warning" sx={{ mt: 1, mb: 2 }}>
+                  <AlertTitle>Exploit Database File Detected</AlertTitle>
+                  This file appears to be directly from Exploit-DB with ID {comparisonResult.exploitdb_id}.
+                  <Link 
+                    href={`https://www.exploit-db.com/exploits/${comparisonResult.exploitdb_id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    sx={{ display: 'block', mt: 1 }}
+                  >
+                    View original exploit on Exploit-DB
+                  </Link>
+                </Alert>
+              )}
+              
+              <Typography variant="body2" gutterBottom>
+                Found {comparisonResult.vulnerability_count} vulnerabilities in scan
+              </Typography>
+              
+              {comparisonResult.matched_patterns.length > 0 && (
+                <Box mt={2}>
+                  <Typography variant="subtitle2">
+                    Vulnerability patterns detected:
+                  </Typography>
+                  <Box display="flex" flexWrap="wrap" gap={1} mt={1}>
+                    {comparisonResult.matched_patterns.map(pattern => (
+                      <Chip 
+                        key={pattern} 
+                        label={pattern} 
+                        size="small" 
+                        color="error" 
+                        variant="outlined" 
+                      />
+                    ))}
+                  </Box>
+                </Box>
+              )}
+              
+              {comparisonResult.vulnerabilities && comparisonResult.vulnerabilities.length > 0 && (
+                <Box mt={3}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Vulnerabilities Found in This File:
+                  </Typography>
+                  <List>
+                    {comparisonResult.vulnerabilities.map((vuln, index) => (
+                      <ListItem key={index} divider>
+                        <ListItemText
+                          primary={
+                            <Box display="flex" alignItems="center" gap={1}>
+                              <Typography variant="body2" fontWeight="bold">
+                                {vuln.check_id}
+                              </Typography>
+                              <Chip 
+                                size="small" 
+                                label={
+                                  vuln.extra?.severity || 
+                                  vuln.severity.toUpperCase() || 
+                                  "INFO"
+                                } 
+                                color={
+                                  (vuln.extra?.severity === "ERROR" || vuln.severity === "error") ? "error" :
+                                  (vuln.extra?.severity === "WARNING" || vuln.severity === "warning") ? "warning" :
+                                  "info"
+                                } 
+                              />
+                              {vuln.matching_exploitdb_vulnerabilities && vuln.matching_exploitdb_vulnerabilities.length > 0 && (
+                                <Chip 
+                                  size="small" 
+                                  icon={<SecurityIcon fontSize="small" />}
+                                  label="Found in Exploit DB" 
+                                  color="secondary"
+                                  variant="outlined"
+                                />
+                              )}
+                            </Box>
+                          }
+                          secondary={
+                            <>
+                              <Typography variant="body2" component="div" display="block" sx={{ mt: 1 }}>
+                                {vuln.message}
+                              </Typography>
+                              
+                              {/* Show matching vulnerabilities from Exploit DB */}
+                              {vuln.matching_exploitdb_vulnerabilities && vuln.matching_exploitdb_vulnerabilities.length > 0 && (
+                                <Box mt={1} px={2} py={1} bgcolor="#f8f0ff" borderLeft="4px solid" borderColor="secondary.main" borderRadius={1}>
+                                  <Typography variant="caption" color="secondary" fontWeight="bold">
+                                    Exploit DB Correlation:
+                                  </Typography>
+                                  {vuln.matching_exploitdb_vulnerabilities.map((match, idx) => (
+                                    <Box key={idx} mt={0.5}>
+                                      <Typography variant="body2" color="text.secondary">
+                                        {match.description} 
+                                        <Typography component="span" variant="caption" color="secondary.dark">
+                                          (Confidence: {match.confidence})
+                                        </Typography>
+                                      </Typography>
+                                    </Box>
+                                  ))}
+                                </Box>
+                              )}
+                            </>
+                          }
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                </Box>
+              )}
+              
+              <Box mt={3}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Exploit DB Results:
+                </Typography>
+                
+                {comparisonResult.file_in_exploitdb ? (
+                  <List>
+                    {comparisonResult.exploitdb_results.map((exploit) => (
+                      <ListItem key={exploit.exploit_id} sx={{ display: 'block', p: 0, mb: 2 }}>
+                        <Paper variant="outlined" sx={{ p: 2 }}>
+                          <Typography variant="h6" gutterBottom>
+                            <Link href={exploit.link} target="_blank" rel="noopener noreferrer">
+                              {exploit.title} ({exploit.exploit_id})
+                            </Link>
+                          </Typography>
+                          
+                          {/* Display CVE information if available */}
+                          {exploit.cve && (
+                            <Box mb={1}>
+                              <Chip 
+                                label={exploit.cve} 
+                                color="error" 
+                                size="small" 
+                                icon={<ErrorIcon />} 
+                                sx={{ fontWeight: 'bold' }} 
+                              />
+                              <Link 
+                                href={`https://cve.mitre.org/cgi-bin/cvename.cgi?name=${exploit.cve}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                sx={{ ml: 1, fontSize: '0.875rem' }}
+                              >
+                                View CVE details
+                              </Link>
+                            </Box>
+                          )}
+                          
+                          {/* Basic exploit information */}
+                          <Typography variant="body2" sx={{ mb: 2 }}>
+                            {exploit.description}
+                          </Typography>
+                          
+                          <Grid container spacing={2} sx={{ mb: 2 }}>
+                            <Grid item xs={12} sm={6}>
+                              <Box display="flex" flexWrap="wrap" gap={1}>
+                                <Chip label={`Type: ${exploit.type}`} size="small" />
+                                <Chip label={`Platform: ${exploit.platform}`} size="small" />
+                                <Chip label={`Author: ${exploit.author}`} size="small" />
+                                <Chip label={`Date: ${exploit.date}`} size="small" />
+                                {exploit.verified && (
+                                  <Chip 
+                                    label="Verified" 
+                                    size="small" 
+                                    color="success" 
+                                    variant="outlined" 
+                                  />
+                                )}
+                              </Box>
+                            </Grid>
+                          </Grid>
+                          
+                          {/* Display notes from Exploit DB report */}
+                          {exploit.notes && (
+                            <Box mt={2} bgcolor="#f5f5f5" p={2} borderRadius={1}>
+                              <Typography variant="subtitle2" gutterBottom>
+                                Exploit DB Notes:
+                              </Typography>
+                              <Typography variant="body2" component="div" sx={{ whiteSpace: 'pre-line' }}>
+                                {exploit.notes}
+                              </Typography>
+                            </Box>
+                          )}
+                          
+                          {/* Display vulnerabilities mentioned in Exploit DB */}
+                          {exploit.vulnerabilities && exploit.vulnerabilities.length > 0 && (
+                            <Box mt={2}>
+                              <Typography variant="subtitle2" gutterBottom color="error">
+                                Vulnerabilities Documented in Exploit DB Report:
+                              </Typography>
+                              <List dense>
+                                {exploit.vulnerabilities.map((v, idx) => (
+                                  <ListItem key={idx} sx={{ 
+                                    border: '1px solid',
+                                    borderColor: 'divider',
+                                    borderRadius: 1,
+                                    mb: 1,
+                                    bgcolor: 'rgba(255, 0, 0, 0.03)'
+                                  }}>
+                                    <ListItemText 
+                                      primary={
+                                        <Typography variant="body2" fontWeight="bold">
+                                          {v.type.toUpperCase()}
+                                        </Typography>
+                                      }
+                                      secondary={
+                                        <Typography variant="body2" sx={{ mt: 0.5 }}>
+                                          {v.description}
+                                        </Typography>
+                                      }
+                                    />
+                                  </ListItem>
+                                ))}
+                              </List>
+                            </Box>
+                          )}
+                        </Paper>
+                      </ListItem>
+                    ))}
+                  </List>
+                ) : (
+                  <Typography variant="body2" color="textSecondary">
+                    No matching entries found in Exploit DB for this file or its vulnerabilities.
+                  </Typography>
+                )}
+              </Box>
+              
+              <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mt: 2 }}>
+                Comparison performed at: {comparisonResult.comparison_timestamp}
+              </Typography>
+            </Box>
+          ) : (
+            <Typography>No comparison data available</Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseCompareDialog}>Close</Button>
         </DialogActions>
       </Dialog>
     </Box>
