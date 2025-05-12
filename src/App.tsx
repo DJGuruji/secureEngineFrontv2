@@ -540,13 +540,13 @@ const classifyVulns = (vulns: Vulnerability[]) => {
             {uploadedFile && (
               <Box sx={{ mt: 3 }}>
                 <FormControl component="fieldset" sx={{ mb: 3 }}>
-                  <FormLabel component="legend">Scan Rule Type</FormLabel>
+                  <FormLabel component="legend">SemGrep Scan Rule Type</FormLabel>
                   <RadioGroup
                     value={ruleType}
                     onChange={(e) => setRuleType(e.target.value as 'auto' | 'custom')}
                   >
                     <FormControlLabel value="auto" control={<Radio />} label="Default (Auto)" />
-                    <FormControlLabel value="custom" control={<Radio />} label="Custom Rule" />
+                    <FormControlLabel value="custom" control={<Radio />} label="Custom Semgrep Rule" />
                   </RadioGroup>
                 </FormControl>
                 
@@ -561,20 +561,23 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                       onChange={handleCustomRuleChange}
                       error={!!customRuleError}
                       helperText={
-                        customRuleError || 
+                        customRuleError ||
                         'Enter your custom Semgrep rule in JSON format. Example:\n' +
                         '{\n' +
                         '  "rules": [\n' +
                         '    {\n' +
-                        '      "id": "custom-rule-1",\n' +
-                        '      "pattern": "eval(...)",\n' +
-                        '      "message": "Avoid using eval()",\n' +
+                        '      "id": "hardcoded-password",\n' +
+                        '      "message": "Hard-coded password string",\n' +
                         '      "severity": "ERROR",\n' +
-                        '      "languages": ["python"]\n' +
+                        '      "languages": ["python"],\n' +
+                        '      "patterns": [\n' +
+                        '        { "pattern": "\\"password=\\"" }\n' +
+                        '      ]\n' +
                         '    }\n' +
                         '  ]\n' +
                         '}'
                       }
+                      
                       sx={{ mb: 1 }}
                     />
                   </Box>

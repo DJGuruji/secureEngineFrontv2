@@ -1,8 +1,13 @@
+// src/components/FileUpload.tsx
 import React from 'react';
-import { Box, Typography, Button } from '@mui/material';
+import {
+  Box,
+  Typography,
+  Button,
+} from '@mui/material';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import { styled } from '@mui/material/styles';
-import { DropzoneOptions, DropzoneState } from 'react-dropzone';
+import { DropzoneState } from 'react-dropzone';
 
 interface FileUploadProps {
   getRootProps: DropzoneState['getRootProps'];
@@ -28,37 +33,49 @@ const FileUpload: React.FC<FileUploadProps> = ({
   getInputProps,
   isDragActive,
   loading,
-}) => {
-  return (
-    <UploadBox {...getRootProps()}>
-      <input {...getInputProps()} />
-      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-        <CloudUploadIcon sx={{ fontSize: 48, color: 'primary.main' }} />
-        {isDragActive ? (
-          <Typography variant="h6" color="primary">
-            Drop the file here...
-          </Typography>
-        ) : (
-          <>
-            <Typography variant="h6">
-              Drag and drop a file here, or click to select
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Supported formats: .zip, .py, .js, .ts, .java, .cpp, .c, .cs, .php, .rb, .go, .rs
-            </Typography>
-            <Button
-              variant="contained"
-              color="primary"
-              disabled={loading}
-              sx={{ mt: 2 }}
-            >
-              Select File
-            </Button>
-          </>
-        )}
-      </Box>
-    </UploadBox>
-  );
-};
+}) => (
+  <UploadBox {...getRootProps()}>
+    <input {...getInputProps()} />
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 2,
+      }}
+    >
+      <CloudUploadIcon sx={{ fontSize: 48, color: 'primary.main' }} />
 
-export default FileUpload; 
+      {isDragActive ? (
+        <Typography variant="h6" component="div" color="primary">
+          Drop the file here…
+        </Typography>
+      ) : (
+        <>
+          <Typography variant="h6" component="div">
+            Drag&nbsp;and&nbsp;drop a file here, or click to select
+          </Typography>
+
+          <Typography
+            variant="body2"
+            component="span"
+            color="text.secondary"
+          >
+            Supported formats:&nbsp;.zip,&nbsp;.py,&nbsp;.js,&nbsp;.ts,&nbsp;.java,&nbsp;.cpp,&nbsp;.c,&nbsp;.cs,&nbsp;.php,&nbsp;.rb,&nbsp;.go,&nbsp;.rs
+          </Typography>
+
+          <Button
+            variant="contained"
+            color="primary"
+            disabled={loading}
+            sx={{ mt: 2 }}
+          >
+            Select File
+          </Button>
+        </>
+      )}
+    </Box>
+  </UploadBox>
+);
+
+export default FileUpload;

@@ -151,9 +151,7 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
 
   const deleteScan = async (scanId: string) => {
     try {
-      await axios.delete(
-        `${API_BASE_URL}/scan/${scanId}`
-      );
+      await axios.delete(`${API_BASE_URL}/scan/${scanId}`);
       await fetchHistory(); // refresh
     } catch (err: any) {
       console.error('Error deleting scan:', err);
@@ -195,31 +193,26 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
   /* Handlers                                                            */
   /* ------------------------------------------------------------------ */
   const handleChangePage = (_: unknown, newPage: number) => setPage(newPage);
-
   const handleChangeRowsPerPage = (
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);
   };
-
   const handleDeleteClick = (scanId: string) => {
     setSelectedScanId(scanId);
     setDeleteDialogOpen(true);
   };
-
   const handleDeleteConfirm = async () => {
     if (!selectedScanId) return;
     await deleteScan(selectedScanId);
     setDeleteDialogOpen(false);
     setSelectedScanId(null);
   };
-
   const handleCompareClick = (scanId: string) => {
     setSelectedScanId(scanId);
     compareWithExploitDb(scanId);
   };
-
   const handleCloseCompareDialog = () => {
     setCompareDialogOpen(false);
     setComparisonResult(null);
@@ -558,10 +551,12 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
                   <List>
                     {comparisonResult.vulnerabilities.map((vuln, index) => (
                       <ListItem key={index} divider>
+                        {/* -------- main ListItemText with fixes -------- */}
                         <ListItemText
+                          disableTypography
                           primary={
                             <Box display="flex" alignItems="center" gap={1}>
-                              <Typography variant="body2" fontWeight="bold">
+                              <Typography variant="body2" fontWeight="bold" component="span">
                                 {vuln.check_id}
                               </Typography>
                               <Chip 
@@ -577,7 +572,7 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
                                   "info"
                                 } 
                               />
-                              {vuln.matching_exploitdb_vulnerabilities && vuln.matching_exploitdb_vulnerabilities.length > 0 && (
+                              {vuln.matching_exploitdb_vulnerabilities?.length > 0 && (
                                 <Chip 
                                   size="small" 
                                   icon={<SecurityIcon fontSize="small" />}
@@ -590,20 +585,19 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
                           }
                           secondary={
                             <>
-                              <Typography variant="body2" component="div" display="block" sx={{ mt: 1 }}>
+                              <Typography variant="body2" component="span" display="block" sx={{ mt: 1 }}>
                                 {vuln.message}
                               </Typography>
                               
-                              {/* Show matching vulnerabilities from Exploit DB */}
-                              {vuln.matching_exploitdb_vulnerabilities && vuln.matching_exploitdb_vulnerabilities.length > 0 && (
+                              {vuln.matching_exploitdb_vulnerabilities?.length > 0 && (
                                 <Box mt={1} px={2} py={1} bgcolor="#f8f0ff" borderLeft="4px solid" borderColor="secondary.main" borderRadius={1}>
-                                  <Typography variant="caption" color="secondary" fontWeight="bold">
+                                  <Typography variant="caption" color="secondary" fontWeight="bold" component="span">
                                     Exploit DB Correlation:
                                   </Typography>
                                   {vuln.matching_exploitdb_vulnerabilities.map((match, idx) => (
                                     <Box key={idx} mt={0.5}>
-                                      <Typography variant="body2" color="text.secondary">
-                                        {match.description} 
+                                      <Typography variant="body2" color="text.secondary" component="span">
+                                        {match.description}{' '}
                                         <Typography component="span" variant="caption" color="secondary.dark">
                                           (Confidence: {match.confidence})
                                         </Typography>
@@ -695,7 +689,7 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
                           )}
                           
                           {/* Display vulnerabilities mentioned in Exploit DB */}
-                          {exploit.vulnerabilities && exploit.vulnerabilities.length > 0 && (
+                          {exploit.vulnerabilities?.length > 0 && (
                             <Box mt={2}>
                               <Typography variant="subtitle2" gutterBottom color="error">
                                 Vulnerabilities Documented in Exploit DB Report:
@@ -710,13 +704,14 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
                                     bgcolor: 'rgba(255, 0, 0, 0.03)'
                                   }}>
                                     <ListItemText 
+                                      disableTypography
                                       primary={
-                                        <Typography variant="body2" fontWeight="bold">
+                                        <Typography variant="body2" fontWeight="bold" component="span">
                                           {v.type.toUpperCase()}
                                         </Typography>
                                       }
                                       secondary={
-                                        <Typography variant="body2" sx={{ mt: 0.5 }}>
+                                        <Typography variant="body2" component="span" sx={{ mt: 0.5 }}>
                                           {v.description}
                                         </Typography>
                                       }
