@@ -26,7 +26,10 @@ import {
   keyframes,
   Autocomplete,
   InputAdornment,
-  ListSubheader
+  ListSubheader,
+  InputLabel,
+  Select,
+  MenuItem
 } from '@mui/material';
 import { useDropzone } from 'react-dropzone';
 import axios from 'axios';
@@ -37,6 +40,10 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import ScanResults from './components/ScanResults';
 import { format } from 'date-fns';
 import SearchIcon from '@mui/icons-material/Search';
+import FilterAltIcon from '@mui/icons-material/FilterAlt';
+import SecurityIcon from '@mui/icons-material/Security';
+import SpeedIcon from '@mui/icons-material/Speed';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 
 interface Vulnerability {
   check_id: string;
@@ -508,6 +515,13 @@ const classifyVulns = (vulns: Vulnerability[]) => {
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [totalRules, setTotalRules] = useState(0);
+  // Add filter state variables
+  const [severityFilter, setSeverityFilter] = useState('all');
+  const [languageFilter, setLanguageFilter] = useState<string[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
+  // Add state to control dropdown open/close
+  const [languageDropdownOpen, setLanguageDropdownOpen] = useState(false);
+  const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
   
   const autocompleteRef = useRef<HTMLDivElement>(null);
   const listboxRef = useRef<HTMLUListElement>(null);
@@ -519,12 +533,24 @@ const classifyVulns = (vulns: Vulnerability[]) => {
   const fetchSemgrepRules = useCallback(async (query: string = '', newOffset: number = 0, append: boolean = false) => {
     try {
       setLoadingRules(true);
+      
+      // Build filter parameters
+      const params: any = {
+        query: query || undefined,
+        limit: 50,
+        offset: newOffset
+      };
+      
+      // Add severity filter
+      if (severityFilter !== 'all') {
+        params.severity = severityFilter;
+      }
+      
+      // Add language filter - handled client-side
+      // Add category filter - handled client-side
+      
       const response = await axios.get(`http://localhost:8000/api/v1/scan/semgrep-rules`, {
-        params: {
-          query: query || undefined,
-          limit: 50,
-          offset: newOffset
-        }
+        params
       });
       
       const { rules, total, has_more } = response.data;
@@ -570,10 +596,42 @@ const classifyVulns = (vulns: Vulnerability[]) => {
       }
       
       // Don't filter out incomplete rules - just ensure they have an ID
-      const validRules = rules.filter((rule: any) => rule.id);
+      let validRules = rules.filter((rule: any) => rule.id);
+      
+      // Apply client-side filtering for languages
+      if (languageFilter.length > 0) {
+        validRules = validRules.filter((rule: any) => {
+          // Check in rule.languages array
+          if (rule.languages && Array.isArray(rule.languages)) {
+            if (rule.languages.some((lang: string) => 
+              languageFilter.includes(lang.toLowerCase()))) {
+              return true;
+            }
+          }
+          
+          // Also check in rule.path
+          if (rule.path) {
+            return languageFilter.some(lang => 
+              rule.path.toLowerCase().includes(lang.toLowerCase()));
+          }
+          
+          return false;
+        });
+      }
+      
+      // Apply client-side filtering for category
+      if (categoryFilter.length > 0) {
+        validRules = validRules.filter((rule: any) => {
+          if (!rule.category) return false;
+          
+          const ruleCategoryLower = rule.category.toLowerCase();
+          return categoryFilter.some(category => 
+            ruleCategoryLower.includes(category.toLowerCase()));
+        });
+      }
       
       if (validRules.length < rules.length) {
-        console.warn(`Filtered out ${rules.length - validRules.length} rules with missing IDs`);
+        console.warn(`Filtered out ${rules.length - validRules.length} rules with missing IDs or that didn't match filters`);
       }
       
       // Update state based on whether we're appending or replacing
@@ -591,7 +649,7 @@ const classifyVulns = (vulns: Vulnerability[]) => {
     } finally {
       setLoadingRules(false);
     }
-  }, []);
+  }, [severityFilter, languageFilter, categoryFilter]);
   
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -609,7 +667,7 @@ const classifyVulns = (vulns: Vulnerability[]) => {
       setHasMore(true);
       fetchSemgrepRules(debouncedSearchQuery, 0, false);
     }
-  }, [ruleType, debouncedSearchQuery, fetchSemgrepRules]);
+  }, [ruleType, debouncedSearchQuery, fetchSemgrepRules, severityFilter, languageFilter, categoryFilter]);
   
   // Handle infinite scroll
   const handleScroll = useCallback((event: React.UIEvent<HTMLUListElement>) => {
@@ -621,6 +679,8 @@ const classifyVulns = (vulns: Vulnerability[]) => {
       fetchSemgrepRules(debouncedSearchQuery, offset + 50, true);
     }
   }, [hasMore, loadingRules, debouncedSearchQuery, offset, fetchSemgrepRules]);
+
+  // State variables moved up to fix reference error
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -656,6 +716,514 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                 
                 {ruleType === 'custom' && (
                   <Box sx={{ mb: 3 }}>
+                    <Paper 
+                      elevation={1} 
+                      sx={{ 
+                        p: 2.5, 
+                        mb: 3, 
+                        borderRadius: 2,
+                        background: theme.palette.mode === 'dark' 
+                          ? 'linear-gradient(to right, rgba(66,66,66,0.8), rgba(50,50,50,0.8))' 
+                          : 'linear-gradient(to right, rgba(245,245,250,1), rgba(240,240,250,0.8))',
+                        border: `1px solid ${theme.palette.divider}`
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2.5 }}>
+                        <FilterAltIcon color="primary" sx={{ mr: 1.5 }} />
+                        <Typography 
+                          variant="h6" 
+                          color="primary" 
+                          sx={{ 
+                            fontWeight: 600, 
+                            letterSpacing: 0.5,
+                            fontSize: '1.1rem'
+                          }}
+                        >
+                          Rule Filters
+                        </Typography>
+                      </Box>
+                    
+                      <Grid container spacing={3}>
+                        {/* Severity Filter */}
+                        <Grid item xs={12} sm={4}>
+                          <Box 
+                            sx={{ 
+                              p: 2, 
+                              bgcolor: 'background.paper', 
+                              borderRadius: 2,
+                              boxShadow: theme.shadows[1],
+                              height: '100%',
+                              display: 'flex',
+                              flexDirection: 'column'
+                            }}
+                          >
+                            <FormControl component="fieldset" fullWidth>
+                              <FormLabel 
+                                component="legend" 
+                                sx={{ 
+                                  fontWeight: 'bold', 
+                                  color: 'primary.main',
+                                  mb: 1.5
+                                }}
+                              >
+                                Severity Level
+                              </FormLabel>
+                              <RadioGroup
+                                value={severityFilter}
+                                onChange={(e) => setSeverityFilter(e.target.value)}
+                                sx={{ 
+                                  display: 'flex', 
+                                  flexDirection: 'column',
+                                  gap: 1
+                                }}
+                              >
+                                <FormControlLabel 
+                                  value="all" 
+                                  control={
+                                    <Radio 
+                                      size="small" 
+                                      sx={{ 
+                                        color: theme.palette.text.secondary,
+                                        '&.Mui-checked': {
+                                          color: theme.palette.primary.main
+                                        }
+                                      }}
+                                    />
+                                  } 
+                                  label="All Levels" 
+                                  sx={{ 
+                                    borderRadius: 1,
+                                    py: 0.5,
+                                    pl: 0.5,
+                                    '&:hover': { 
+                                      bgcolor: theme.palette.action.hover 
+                                    }
+                                  }}
+                                />
+                                <FormControlLabel 
+                                  value="error" 
+                                  control={
+                                    <Radio 
+                                      size="small"
+                                      sx={{ 
+                                        color: theme.palette.error.main,
+                                        '&.Mui-checked': {
+                                          color: theme.palette.error.main
+                                        }
+                                      }} 
+                                    />
+                                  } 
+                                  label={
+                                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                      <Typography>Error</Typography>
+                                      <Chip 
+                                        size="small" 
+                                        label="High" 
+                                        color="error" 
+                                        sx={{ ml: 1, height: 20, fontSize: '0.7rem' }} 
+                                        variant="outlined"
+                                      />
+                                    </Box>
+                                  }
+                                  sx={{ 
+                                    borderRadius: 1,
+                                    py: 0.5,
+                                    pl: 0.5,
+                                    '&:hover': { 
+                                      bgcolor: theme.palette.action.hover 
+                                    }
+                                  }}
+                                />
+                                <FormControlLabel 
+                                  value="warning" 
+                                  control={
+                                    <Radio 
+                                      size="small" 
+                                      sx={{ 
+                                        color: theme.palette.warning.main,
+                                        '&.Mui-checked': {
+                                          color: theme.palette.warning.main
+                                        }
+                                      }}
+                                    />
+                                  } 
+                                  label={
+                                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                      <Typography>Warning</Typography>
+                                      <Chip 
+                                        size="small" 
+                                        label="Medium" 
+                                        color="warning" 
+                                        sx={{ ml: 1, height: 20, fontSize: '0.7rem' }} 
+                                        variant="outlined"
+                                      />
+                                    </Box>
+                                  }
+                                  sx={{ 
+                                    borderRadius: 1,
+                                    py: 0.5,
+                                    pl: 0.5,
+                                    '&:hover': { 
+                                      bgcolor: theme.palette.action.hover 
+                                    }
+                                  }}
+                                />
+                                <FormControlLabel 
+                                  value="info" 
+                                  control={
+                                    <Radio 
+                                      size="small" 
+                                      sx={{ 
+                                        color: theme.palette.info.main,
+                                        '&.Mui-checked': {
+                                          color: theme.palette.info.main
+                                        }
+                                      }}
+                                    />
+                                  } 
+                                  label={
+                                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                      <Typography>Info</Typography>
+                                      <Chip 
+                                        size="small" 
+                                        label="Low" 
+                                        color="info" 
+                                        sx={{ ml: 1, height: 20, fontSize: '0.7rem' }} 
+                                        variant="outlined"
+                                      />
+                                    </Box>
+                                  }
+                                  sx={{ 
+                                    borderRadius: 1,
+                                    py: 0.5,
+                                    pl: 0.5,
+                                    '&:hover': { 
+                                      bgcolor: theme.palette.action.hover 
+                                    }
+                                  }}
+                                />
+                              </RadioGroup>
+                            </FormControl>
+                          </Box>
+                        </Grid>
+                        
+                        {/* Language Filter */}
+                        <Grid item xs={12} sm={4}>
+                          <Box 
+                            sx={{ 
+                              p: 2, 
+                              bgcolor: 'background.paper', 
+                              borderRadius: 2,
+                              boxShadow: theme.shadows[1],
+                              height: '100%',
+                              display: 'flex',
+                              flexDirection: 'column'
+                            }}
+                          >
+                            <FormControl fullWidth>
+                              <InputLabel 
+                                sx={{ 
+                                  fontWeight: 'bold', 
+                                  color: 'primary.main' 
+                                }}
+                              >
+                                Programming Languages
+                              </InputLabel>
+                              
+                              {/* Dropdown for selecting languages */}
+                              <Select
+                                multiple
+                                open={languageDropdownOpen}
+                                onOpen={() => setLanguageDropdownOpen(true)}
+                                onClose={() => setLanguageDropdownOpen(false)}
+                                value={languageFilter}
+                                onChange={(e) => {
+                                  setLanguageFilter(e.target.value as string[]);
+                                  // Close dropdown immediately after selection
+                                  setLanguageDropdownOpen(false);
+                                }}
+                                renderValue={() => {
+                                  // Show just a placeholder if items are selected
+                                  return languageFilter.length > 0 ? 
+                                    <Typography variant="body2" noWrap sx={{ color: 'text.secondary' }}>
+                                      {languageFilter.length} languages selected
+                                    </Typography> : 
+                                    <Typography variant="body2" noWrap sx={{ color: 'text.secondary' }}>
+                                      Select programming languages
+                                    </Typography>;
+                                }}
+                                size="small"
+                                sx={{
+                                  borderRadius: 1,
+                                  '& .MuiOutlinedInput-notchedOutline': {
+                                    borderColor: theme.palette.divider
+                                  },
+                                  '&:hover .MuiOutlinedInput-notchedOutline': {
+                                    borderColor: theme.palette.primary.main
+                                  }
+                                }}
+                                MenuProps={{
+                                  // Close on selection
+                                  autoFocus: false,
+                                  disableAutoFocusItem: true,
+                                  disableAutoFocus: true,
+                                  PaperProps: {
+                                    sx: {
+                                      maxHeight: 300,
+                                      borderRadius: 2,
+                                      boxShadow: theme.shadows[3]
+                                    }
+                                  }
+                                }}
+                              >
+                                <ListSubheader sx={{ bgcolor: 'background.paper', fontWeight: 'bold', color: 'primary.main' }}>
+                                  Common Languages
+                                </ListSubheader>
+                                {['generic', 'python', 'javascript', 'typescript', 'java'].map((lang) => (
+                                  <MenuItem 
+                                    key={lang} 
+                                    value={lang}
+                                    onClick={() => {
+                                      // Handle single item selection to close dropdown immediately
+                                      if (!languageFilter.includes(lang)) {
+                                        setLanguageFilter([...languageFilter, lang]);
+                                      }
+                                      setLanguageDropdownOpen(false);
+                                    }}
+                                  >
+                                    {lang.charAt(0).toUpperCase() + lang.slice(1)}
+                                  </MenuItem>
+                                ))}
+                                
+                                <ListSubheader sx={{ bgcolor: 'background.paper', fontWeight: 'bold', color: 'primary.main' }}>
+                                  Other Languages
+                                </ListSubheader>
+                                {['go', 'ruby', 'c', 'cpp'].map((lang) => (
+                                  <MenuItem 
+                                    key={lang} 
+                                    value={lang}
+                                    onClick={() => {
+                                      // Handle single item selection to close dropdown immediately
+                                      if (!languageFilter.includes(lang)) {
+                                        setLanguageFilter([...languageFilter, lang]);
+                                      }
+                                      setLanguageDropdownOpen(false);
+                                    }}
+                                  >
+                                    {lang === 'cpp' ? 'C++' : lang.charAt(0).toUpperCase() + lang.slice(1)}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                              
+                              {/* Selected languages display (separate from dropdown) */}
+                              <Box 
+                                sx={{ 
+                                  display: 'flex', 
+                                  flexWrap: 'wrap', 
+                                  gap: 0.5,
+                                  mt: 2,
+                                  position: 'relative',
+                                  zIndex: 5, // Higher z-index to ensure chips are clickable
+                                  minHeight: '32px'
+                                }}
+                              >
+                                {languageFilter.length > 0 ? (
+                                  languageFilter.map((value) => (
+                                    <Chip 
+                                      key={value} 
+                                      label={value} 
+                                      size="small"
+                                      color="primary"
+                                      variant="outlined"
+                                      onDelete={() => {
+                                        setLanguageFilter(prev => prev.filter(item => item !== value));
+                                      }}
+                                      sx={{
+                                        borderRadius: '16px',
+                                        transition: 'all 0.2s ease',
+                                        '&:hover': {
+                                          backgroundColor: theme.palette.primary.light,
+                                          color: theme.palette.primary.contrastText
+                                        }
+                                      }}
+                                    />
+                                  ))
+                                ) : (
+                                  <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', fontStyle: 'italic' }}>
+                                    No language filters selected
+                                  </Typography>
+                                )}
+                              </Box>
+                            </FormControl>
+                          </Box>
+                        </Grid>
+                        
+                        {/* Category Filter */}
+                        <Grid item xs={12} sm={4}>
+                          <Box 
+                            sx={{ 
+                              p: 2, 
+                              bgcolor: 'background.paper', 
+                              borderRadius: 2,
+                              boxShadow: theme.shadows[1],
+                              height: '100%',
+                              display: 'flex',
+                              flexDirection: 'column'
+                            }}
+                          >
+                            <FormControl fullWidth>
+                              <InputLabel 
+                                sx={{ 
+                                  fontWeight: 'bold', 
+                                  color: 'primary.main' 
+                                }}
+                              >
+                                Rule Categories
+                              </InputLabel>
+                              
+                              {/* Dropdown for selecting categories */}
+                              <Select
+                                multiple
+                                open={categoryDropdownOpen}
+                                onOpen={() => setCategoryDropdownOpen(true)}
+                                onClose={() => setCategoryDropdownOpen(false)}
+                                value={categoryFilter}
+                                onChange={(e) => {
+                                  setCategoryFilter(e.target.value as string[]);
+                                  // Close dropdown immediately after selection
+                                  setCategoryDropdownOpen(false);
+                                }}
+                                renderValue={() => {
+                                  // Show just a placeholder if items are selected
+                                  return categoryFilter.length > 0 ? 
+                                    <Typography variant="body2" noWrap sx={{ color: 'text.secondary' }}>
+                                      {categoryFilter.length} categories selected
+                                    </Typography> : 
+                                    <Typography variant="body2" noWrap sx={{ color: 'text.secondary' }}>
+                                      Select rule categories
+                                    </Typography>;
+                                }}
+                                size="small"
+                                sx={{
+                                  borderRadius: 1,
+                                  '& .MuiOutlinedInput-notchedOutline': {
+                                    borderColor: theme.palette.divider
+                                  },
+                                  '&:hover .MuiOutlinedInput-notchedOutline': {
+                                    borderColor: theme.palette.primary.main
+                                  }
+                                }}
+                                MenuProps={{
+                                  // Close on selection
+                                  autoFocus: false,
+                                  disableAutoFocusItem: true,
+                                  disableAutoFocus: true,
+                                  PaperProps: {
+                                    sx: {
+                                      maxHeight: 300,
+                                      borderRadius: 2,
+                                      boxShadow: theme.shadows[3]
+                                    }
+                                  }
+                                }}
+                              >
+                                {[
+                                  { 
+                                    value: 'security', 
+                                    label: 'Security', 
+                                    icon: <SecurityIcon sx={{ color: theme.palette.error.main, mr: 1, fontSize: '1.2rem' }} />
+                                  },
+                                  { 
+                                    value: 'performance', 
+                                    label: 'Performance', 
+                                    icon: <SpeedIcon sx={{ color: theme.palette.warning.main, mr: 1, fontSize: '1.2rem' }} /> 
+                                  },
+                                  { 
+                                    value: 'best-practice', 
+                                    label: 'Best Practice', 
+                                    icon: <CheckCircleIcon sx={{ color: theme.palette.success.main, mr: 1, fontSize: '1.2rem' }} />
+                                  }
+                                ].map((category) => (
+                                  <MenuItem 
+                                    key={category.value} 
+                                    value={category.value}
+                                    onClick={() => {
+                                      // Handle single item selection to close dropdown immediately
+                                      if (!categoryFilter.includes(category.value)) {
+                                        setCategoryFilter([...categoryFilter, category.value]);
+                                      }
+                                      setCategoryDropdownOpen(false);
+                                    }}
+                                  >
+                                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                      {category.icon}
+                                      {category.label}
+                                    </Box>
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                              
+                              {/* Selected categories display (separate from dropdown) */}
+                              <Box 
+                                sx={{ 
+                                  display: 'flex', 
+                                  flexWrap: 'wrap', 
+                                  gap: 0.5,
+                                  mt: 2,
+                                  position: 'relative',
+                                  zIndex: 5, // Higher z-index to ensure chips are clickable
+                                  minHeight: '32px'
+                                }}
+                              >
+                                {categoryFilter.length > 0 ? (
+                                  categoryFilter.map((value) => {
+                                    // Determine chip color based on category
+                                    let chipColor: 'error' | 'warning' | 'success' | 'default' = 'default';
+                                    let chipIcon = null;
+                                    
+                                    if (value === 'security') {
+                                      chipColor = 'error';
+                                      chipIcon = <SecurityIcon sx={{ fontSize: '0.8rem', mr: 0.5 }} />;
+                                    } else if (value === 'performance') {
+                                      chipColor = 'warning';
+                                      chipIcon = <SpeedIcon sx={{ fontSize: '0.8rem', mr: 0.5 }} />;
+                                    } else if (value === 'best-practice') {
+                                      chipColor = 'success';
+                                      chipIcon = <CheckCircleIcon sx={{ fontSize: '0.8rem', mr: 0.5 }} />;
+                                    }
+                                    
+                                    return (
+                                      <Chip 
+                                        key={value} 
+                                        label={value} 
+                                        size="small"
+                                        color={chipColor}
+                                        icon={chipIcon}
+                                        onDelete={() => {
+                                          setCategoryFilter(prev => prev.filter(item => item !== value));
+                                        }}
+                                        sx={{
+                                          borderRadius: '16px',
+                                          transition: 'all 0.2s ease',
+                                          '& .MuiChip-icon': {
+                                            ml: 0.5
+                                          }
+                                        }}
+                                      />
+                                    );
+                                  })
+                                ) : (
+                                  <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', fontStyle: 'italic' }}>
+                                    No category filters selected
+                                  </Typography>
+                                )}
+                              </Box>
+                            </FormControl>
+                          </Box>
+                        </Grid>
+                      </Grid>
+                    </Paper>
+                    
                     <Autocomplete
                       id="semgrep-rules"
                       options={semgrepRules}
@@ -855,118 +1423,307 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                     />
                     
                     {selectedRule && (
-                      <Paper variant="outlined" sx={{ p: 2, mt: 2, bgcolor: theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.02)' }}>
-                        <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                          Selected Rule Details
-                        </Typography>
+                      <Paper 
+                        elevation={2} 
+                        sx={{ 
+                          mt: 3, 
+                          borderRadius: 2,
+                          overflow: 'hidden',
+                          border: `1px solid ${theme.palette.divider}`,
+                          transition: 'all 0.3s ease',
+                          '&:hover': {
+                            boxShadow: theme.shadows[4]
+                          }
+                        }}
+                      >
+                        {/* Header with rule ID and severity */}
+                        <Box 
+                          sx={{ 
+                            p: 2, 
+                            display: 'flex', 
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            borderBottom: `1px solid ${theme.palette.divider}`,
+                            background: theme.palette.mode === 'dark' 
+                              ? 'linear-gradient(45deg, rgba(66,66,66,1) 0%, rgba(50,50,50,1) 100%)' 
+                              : 'linear-gradient(45deg, rgba(245,245,245,1) 0%, rgba(235,235,235,1) 100%)'
+                          }}
+                        >
+                          <Box>
+                            <Typography variant="h6" color="primary">
+                              Selected Rule
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              ID: <code>{selectedRule.id}</code>
+                            </Typography>
+                          </Box>
+                          
+                          {selectedRule.severity && (
+                            <Chip 
+                              label={selectedRule.severity.toUpperCase()}
+                              color={
+                                selectedRule.severity.toLowerCase() === 'error' ? 'error' :
+                                selectedRule.severity.toLowerCase() === 'warning' ? 'warning' : 'info'
+                              }
+                              size="medium"
+                              sx={{ fontWeight: 'bold' }}
+                            />
+                          )}
+                        </Box>
                         
-                        <Grid container spacing={2}>
-                          <Grid item xs={12} sm={6}>
-                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                              <strong>ID:</strong> {selectedRule.id}
-                            </Typography>
-                            {selectedRule.rule_id && (
-                              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                                <strong>Rule ID:</strong> {selectedRule.rule_id}
-                              </Typography>
-                            )}
-                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                              <strong>Category:</strong> {selectedRule.category || 'N/A'}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                              <strong>Severity:</strong> {selectedRule.severity || 'N/A'}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                              <strong>Languages:</strong> {Array.isArray(selectedRule.languages) ? selectedRule.languages.join(', ') : selectedRule.languages || 'N/A'}
-                            </Typography>
-                            {selectedRule.path && (
-                              <Typography variant="body2" color="text.secondary" sx={{ mb: 1, fontWeight: 'bold', color: theme.palette.success.main }}>
-                                <strong>Path:</strong> {selectedRule.path}
-                              </Typography>
-                            )}
-                            {selectedRule.mode && (
-                              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                                <strong>Mode:</strong> {selectedRule.mode}
-                              </Typography>
-                            )}
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            {selectedRule.message && (
-                              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                                <strong>Message:</strong> {selectedRule.message}
-                              </Typography>
-                            )}
-                            {selectedRule.tags && selectedRule.tags.length > 0 && (
-                              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                                <strong>Tags:</strong> {Array.isArray(selectedRule.tags) ? selectedRule.tags.join(', ') : selectedRule.tags}
-                              </Typography>
-                            )}
-                            {selectedRule.fix && (
-                              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                                <strong>Fix:</strong> {selectedRule.fix}
-                              </Typography>
-                            )}
-                            {selectedRule.source_uri && (
-                              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                                <strong>Source URI:</strong> {selectedRule.source_uri}
-                              </Typography>
-                            )}
-                            {selectedRule.visibility && (
-                              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                                <strong>Visibility:</strong> {selectedRule.visibility}
-                              </Typography>
-                            )}
-                          </Grid>
-                          <Grid item xs={12}>
-                            {selectedRule.metadata && Object.keys(selectedRule.metadata).length > 0 && (
-                              <>
-                                <Typography variant="body2" fontWeight="bold" color="text.secondary" sx={{ mt: 2, mb: 1 }}>
-                                  Metadata:
+                        {/* Main content */}
+                        <Box sx={{ p: 2 }}>
+                          <Grid container spacing={3}>
+                            {/* Left column - Basic info */}
+                            <Grid item xs={12} md={6}>
+                              <Box 
+                                sx={{ 
+                                  p: 2, 
+                                  borderRadius: 1, 
+                                  bgcolor: theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.02)',
+                                  height: '100%'
+                                }}
+                              >
+                                <Typography variant="subtitle1" color="primary" gutterBottom>
+                                  Basic Information
                                 </Typography>
-                                <Box sx={{ pl: 2 }}>
-                                  {selectedRule.metadata.cwe && (
-                                    <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                                      <strong>CWE:</strong> {selectedRule.metadata.cwe}
+                                
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                  <tbody>
+                                    {selectedRule.rule_id && (
+                                      <tr>
+                                        <td style={{ padding: '4px 0', width: '35%', fontWeight: 'bold' }}>Rule ID:</td>
+                                        <td>{selectedRule.rule_id}</td>
+                                      </tr>
+                                    )}
+                                    <tr>
+                                      <td style={{ padding: '4px 0', width: '35%', fontWeight: 'bold' }}>Category:</td>
+                                      <td>{selectedRule.category || 'N/A'}</td>
+                                    </tr>
+                                    <tr>
+                                      <td style={{ padding: '4px 0', fontWeight: 'bold' }}>Languages:</td>
+                                      <td>
+                                        {Array.isArray(selectedRule.languages) && selectedRule.languages.length > 0 ? (
+                                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                            {selectedRule.languages.map((lang, idx) => (
+                                              <Chip 
+                                                key={idx} 
+                                                label={lang} 
+                                                size="small" 
+                                                variant="outlined" 
+                                                color="primary"
+                                              />
+                                            ))}
+                                          </Box>
+                                        ) : 'N/A'}
+                                      </td>
+                                    </tr>
+                                    {selectedRule.path && (
+                                      <tr>
+                                        <td style={{ padding: '4px 0', fontWeight: 'bold' }}>Path:</td>
+                                        <td style={{ color: theme.palette.success.main }}>{selectedRule.path}</td>
+                                      </tr>
+                                    )}
+                                    {selectedRule.mode && (
+                                      <tr>
+                                        <td style={{ padding: '4px 0', fontWeight: 'bold' }}>Mode:</td>
+                                        <td>{selectedRule.mode}</td>
+                                      </tr>
+                                    )}
+                                    {selectedRule.visibility && (
+                                      <tr>
+                                        <td style={{ padding: '4px 0', fontWeight: 'bold' }}>Visibility:</td>
+                                        <td>{selectedRule.visibility}</td>
+                                      </tr>
+                                    )}
+                                    {selectedRule.metadata?.cwe && (
+                                      <tr>
+                                        <td style={{ padding: '4px 0', fontWeight: 'bold' }}>CWE:</td>
+                                        <td style={{ color: theme.palette.error.main }}>{selectedRule.metadata.cwe}</td>
+                                      </tr>
+                                    )}
+                                  </tbody>
+                                </table>
+                              </Box>
+                            </Grid>
+                            
+                            {/* Right column - Details */}
+                            <Grid item xs={12} md={6}>
+                              <Box 
+                                sx={{ 
+                                  p: 2, 
+                                  borderRadius: 1, 
+                                  bgcolor: theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.02)',
+                                  height: '100%'
+                                }}
+                              >
+                                <Typography variant="subtitle1" color="primary" gutterBottom>
+                                  Detection Details
+                                </Typography>
+                                
+                                {selectedRule.message && (
+                                  <Box sx={{ mb: 2 }}>
+                                    <Typography variant="body2" fontWeight="bold">Message:</Typography>
+                                    <Box sx={{ 
+                                      p: 1, 
+                                      borderRadius: 1, 
+                                      bgcolor: theme.palette.mode === 'dark' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(0, 0, 0, 0.05)',
+                                      fontSize: '0.9rem',
+                                      fontFamily: 'monospace'
+                                    }}>
+                                      {selectedRule.message}
+                                    </Box>
+                                  </Box>
+                                )}
+                                
+                                {selectedRule.tags && selectedRule.tags.length > 0 && (
+                                  <Box sx={{ mb: 2 }}>
+                                    <Typography variant="body2" fontWeight="bold" sx={{ mb: 0.5 }}>Tags:</Typography>
+                                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                      {Array.isArray(selectedRule.tags) && selectedRule.tags.map((tag, idx) => (
+                                        <Chip 
+                                          key={idx} 
+                                          label={tag} 
+                                          size="small" 
+                                          variant="outlined"
+                                          color="secondary"
+                                        />
+                                      ))}
+                                    </Box>
+                                  </Box>
+                                )}
+                                
+                                {selectedRule.fix && (
+                                  <Box sx={{ mb: 2 }}>
+                                    <Typography variant="body2" fontWeight="bold">Fix:</Typography>
+                                    <Typography variant="body2">{selectedRule.fix}</Typography>
+                                  </Box>
+                                )}
+                                
+                                {selectedRule.source_uri && (
+                                  <Box sx={{ mb: 2 }}>
+                                    <Typography variant="body2" fontWeight="bold">Source URI:</Typography>
+                                    <Typography 
+                                      variant="body2" 
+                                      component="a" 
+                                      href={selectedRule.source_uri} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      sx={{ color: theme.palette.primary.main }}
+                                    >
+                                      {selectedRule.source_uri}
                                     </Typography>
-                                  )}
-                                  {selectedRule.metadata.owasp && (
-                                    <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                                      <strong>OWASP:</strong> {selectedRule.metadata.owasp}
-                                    </Typography>
-                                  )}
-                                  {selectedRule.metadata.references && (
-                                    <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                                      <strong>References:</strong> {Array.isArray(selectedRule.metadata.references) ? selectedRule.metadata.references.join(', ') : selectedRule.metadata.references}
-                                    </Typography>
-                                  )}
-                                  {selectedRule.metadata.technology && (
-                                    <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                                      <strong>Technology:</strong> {selectedRule.metadata.technology}
-                                    </Typography>
-                                  )}
+                                  </Box>
+                                )}
+                              </Box>
+                            </Grid>
+                            
+                            {/* Metadata section */}
+                            {selectedRule.metadata && Object.keys(selectedRule.metadata).length > 0 && (
+                              <Grid item xs={12}>
+                                <Box 
+                                  sx={{ 
+                                    p: 2, 
+                                    borderRadius: 1, 
+                                    bgcolor: theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.02)',
+                                  }}
+                                >
+                                  <Typography variant="subtitle1" color="primary" gutterBottom>
+                                    Security Metadata
+                                  </Typography>
+                                  
+                                  <Grid container spacing={2}>
+                                    {selectedRule.metadata.owasp && (
+                                      <Grid item xs={12} sm={6} md={4}>
+                                        <Paper variant="outlined" sx={{ p: 1.5 }}>
+                                          <Typography variant="body2" fontWeight="bold" color="error">
+                                            OWASP Reference
+                                          </Typography>
+                                          <Typography variant="body2">{selectedRule.metadata.owasp}</Typography>
+                                        </Paper>
+                                      </Grid>
+                                    )}
+                                    
+                                    {selectedRule.metadata.cwe && (
+                                      <Grid item xs={12} sm={6} md={4}>
+                                        <Paper variant="outlined" sx={{ p: 1.5 }}>
+                                          <Typography variant="body2" fontWeight="bold" color="error">
+                                            CWE Reference
+                                          </Typography>
+                                          <Typography variant="body2">{selectedRule.metadata.cwe}</Typography>
+                                        </Paper>
+                                      </Grid>
+                                    )}
+                                    
+                                    {selectedRule.metadata.technology && (
+                                      <Grid item xs={12} sm={6} md={4}>
+                                        <Paper variant="outlined" sx={{ p: 1.5 }}>
+                                          <Typography variant="body2" fontWeight="bold" color="primary">
+                                            Technology
+                                          </Typography>
+                                          <Typography variant="body2">{selectedRule.metadata.technology}</Typography>
+                                        </Paper>
+                                      </Grid>
+                                    )}
+                                    
+                                    {selectedRule.metadata.references && (
+                                      <Grid item xs={12}>
+                                        <Paper variant="outlined" sx={{ p: 1.5 }}>
+                                          <Typography variant="body2" fontWeight="bold" color="primary">
+                                            References
+                                          </Typography>
+                                          <Typography variant="body2">
+                                            {Array.isArray(selectedRule.metadata.references) 
+                                              ? selectedRule.metadata.references.join(', ') 
+                                              : selectedRule.metadata.references}
+                                          </Typography>
+                                        </Paper>
+                                      </Grid>
+                                    )}
+                                  </Grid>
                                 </Box>
-                              </>
+                              </Grid>
                             )}
                             
+                            {/* Pattern rules section */}
                             {selectedRule.patterns && selectedRule.patterns.length > 0 && (
-                              <>
-                                <Typography variant="body2" fontWeight="bold" color="text.secondary" sx={{ mt: 2, mb: 1 }}>
-                                  Pattern Rules:
-                                </Typography>
-                                <Box component="pre" sx={{ 
-                                  bgcolor: theme.palette.mode === 'dark' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(0, 0, 0, 0.05)', 
-                                  p: 1, 
-                                  borderRadius: 1,
-                                  fontSize: '0.8rem',
-                                  overflow: 'auto',
-                                  maxHeight: '200px'
-                                }}>
-                                  {JSON.stringify(selectedRule.patterns, null, 2)}
+                              <Grid item xs={12}>
+                                <Box 
+                                  sx={{ 
+                                    p: 2, 
+                                    borderRadius: 1, 
+                                    bgcolor: theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.02)',
+                                  }}
+                                >
+                                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                                    <Typography variant="subtitle1" color="primary">
+                                      Pattern Rules
+                                    </Typography>
+                                    <Chip 
+                                      label={`${selectedRule.patterns.length} pattern${selectedRule.patterns.length > 1 ? 's' : ''}`} 
+                                      color="primary" 
+                                      size="small" 
+                                      variant="outlined"
+                                    />
+                                  </Box>
+                                  
+                                  <Box component="pre" sx={{ 
+                                    bgcolor: theme.palette.mode === 'dark' ? 'rgba(0, 0, 0, 0.3)' : 'rgba(0, 0, 0, 0.06)', 
+                                    p: 2, 
+                                    borderRadius: 1,
+                                    fontSize: '0.85rem',
+                                    fontFamily: 'monospace',
+                                    overflow: 'auto',
+                                    maxHeight: '300px',
+                                    border: `1px solid ${theme.palette.divider}`
+                                  }}>
+                                    {JSON.stringify(selectedRule.patterns, null, 2)}
+                                  </Box>
                                 </Box>
-                              </>
+                              </Grid>
                             )}
                           </Grid>
-                        </Grid>
+                        </Box>
                       </Paper>
                     )}
                   </Box>
