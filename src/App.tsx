@@ -529,16 +529,58 @@ const classifyVulns = (vulns: Vulnerability[]) => {
       
       const { rules, total, has_more } = response.data;
       
-      // Log the first rule to understand its structure
+      // Log comprehensive information about received rules
+      console.log(`Received ${rules?.length || 0} rules from API`);
+      
       if (rules && rules.length > 0) {
+        // Log first rule details
         console.log('First rule structure:', rules[0]);
+        
+        // Count rules with various properties
+        const ruleStats = {
+          withName: 0,
+          withDescription: 0,
+          withLanguages: 0,
+          withPython: 0,
+          withJavaScript: 0,
+          withTypeScript: 0,
+          withJava: 0,
+          withGo: 0
+        };
+        
+        // Check each rule
+        rules.forEach((rule: any) => {
+          if (rule.name && rule.name !== 'Unknown Rule') ruleStats.withName++;
+          if (rule.description && rule.description !== 'No description available') ruleStats.withDescription++;
+          
+          if (rule.languages && Array.isArray(rule.languages) && rule.languages.length > 0) {
+            ruleStats.withLanguages++;
+            
+            // Check for specific languages
+            const languages = rule.languages.map((l: string) => l.toLowerCase());
+            if (languages.includes('python')) ruleStats.withPython++;
+            if (languages.includes('javascript')) ruleStats.withJavaScript++;
+            if (languages.includes('typescript')) ruleStats.withTypeScript++;
+            if (languages.includes('java')) ruleStats.withJava++;
+            if (languages.includes('go')) ruleStats.withGo++;
+          }
+        });
+        
+        console.log('Rule statistics:', ruleStats);
+      }
+      
+      // Don't filter out incomplete rules - just ensure they have an ID
+      const validRules = rules.filter((rule: any) => rule.id);
+      
+      if (validRules.length < rules.length) {
+        console.warn(`Filtered out ${rules.length - validRules.length} rules with missing IDs`);
       }
       
       // Update state based on whether we're appending or replacing
       if (append) {
-        setSemgrepRules(prev => [...prev, ...rules]);
+        setSemgrepRules(prev => [...prev, ...validRules]);
       } else {
-        setSemgrepRules(rules);
+        setSemgrepRules(validRules);
       }
       
       setTotalRules(total);
@@ -622,7 +664,7 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                       onChange={(event, newValue) => {
                         setSelectedRule(newValue);
                       }}
-                      getOptionLabel={(option) => option.name || option.id || 'Unnamed Rule'}
+                      getOptionLabel={(option) => option.id || ''}
                       filterOptions={(x) => x} // Disable built-in filtering as we do server-side filtering
                       ListboxProps={{
                         onScroll: handleScroll,
@@ -630,7 +672,7 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                       }}
                       ref={autocompleteRef}
                       renderInput={(params) => (
-                        <TextField
+                    <TextField
                           {...params}
                           label="Select Semgrep Rule"
                           InputProps={{
@@ -659,28 +701,139 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                       renderOption={(props, option) => {
                         if (!option) return <li {...props}>Missing rule data</li>;
                         
+                        // Check for incomplete rule data
+                        const isIncompleteRule = !option.name || !option.description || !option.languages || !Array.isArray(option.languages) || option.languages.length === 0;
+                        
+                        if (isIncompleteRule) {
+                          return (
+                            <li {...props}>
+                              <Box sx={{ width: '100%' }}>
+                                <Typography variant="body1" fontWeight="bold">
+                                  Rule: {option.id || 'Unknown ID'}
+                                </Typography>
+                                <Box display="flex" flexWrap="wrap" gap={0.75} mt={1}>
+                                  <Chip 
+                                    size="small" 
+                                    label={option.id} 
+                                    variant="outlined" 
+                                    color="primary"
+                                  />
+                                  {option.severity && (
+                                    <Chip 
+                                      size="small" 
+                                      label={`Severity: ${option.severity}`} 
+                                      color="default"
+                                    />
+                                  )}
+                                  {option.path && (
+                                    <Chip
+                                      size="small"
+                                      label={`Path: ${option.path.split('/').pop()}`}
+                                      variant="outlined"
+                                    />
+                                  )}
+                                </Box>
+                              </Box>
+                            </li>
+                          );
+                        }
+                        
+                        // Get severity color
+                        const getSeverityColor = (severity: string) => {
+                          const sev = (severity || '').toLowerCase();
+                          if (sev === 'error') return 'error';
+                          if (sev === 'warning') return 'warning';
+                          if (sev === 'info') return 'info';
+                          return 'default';
+                        };
+                        
+                        // Get severity label
+                        const getSeverityLabel = (severity: string) => {
+                          const sev = (severity || '').toLowerCase();
+                          if (sev === 'error') return 'High';
+                          if (sev === 'warning') return 'Medium';
+                          if (sev === 'info') return 'Low';
+                          return severity || 'Unknown';
+                        };
+                        
                         return (
                           <li {...props}>
-                            <Box>
-                              <Typography variant="body1" fontWeight="bold">{option.name || option.id || 'Unnamed Rule'}</Typography>
-                              <Typography variant="body2" color="text.secondary">{option.description || 'No description available'}</Typography>
-                              <Box display="flex" gap={1} mt={0.5}>
-                                {option.category && (
-                                  <Typography variant="caption" color="primary">
-                                    {option.category}
-                                  </Typography>
+                            <Box sx={{ width: '100%' }}>
+                              <Typography variant="body1" fontWeight="bold">
+                                Rule ID: {option.id}
+                              </Typography>
+                              
+                              <Box display="flex" flexWrap="wrap" gap={0.75} mt={1}>
+                                {option.id && (
+                                  <Chip 
+                                    size="small" 
+                                    label={option.id} 
+                                    variant="outlined" 
+                                    color="primary"
+                                  />
                                 )}
+                                
                                 {option.severity && (
-                                  <Typography variant="caption" color="error">
-                                    {option.severity}
-                                  </Typography>
+                                  <Chip 
+                                    size="small" 
+                                    label={`Severity: ${getSeverityLabel(option.severity)}`} 
+                                    color={getSeverityColor(option.severity)}
+                                  />
                                 )}
-                                {option.languages && option.languages.length > 0 && (
-                                  <Typography variant="caption">
-                                    {Array.isArray(option.languages) ? option.languages.join(', ') : option.languages}
-                                  </Typography>
+                                
+                                {option.category && (
+                                  <Chip 
+                                    size="small" 
+                                    label={`Category: ${option.category}`} 
+                                    variant="outlined"
+                                  />
+                                )}
+                                
+                                {option.path && (
+                                  <Chip 
+                                    size="small" 
+                                    label={`Path: ${option.path}`} 
+                                    variant="outlined"
+                                    color="success"
+                                  />
+                                )}
+                                
+                                {option.message && (
+                                  <Chip
+                                    size="small"
+                                    label="Has message"
+                                    color="success"
+                                    variant="outlined"
+                                  />
+                                )}
+                                
+                                {option.patterns && option.patterns.length > 0 && (
+                                  <Chip
+                                    size="small"
+                                    label="Has patterns"
+                                    color="info"
+                                    variant="outlined"
+                                  />
                                 )}
                               </Box>
+                              
+                              {option.languages && option.languages.length > 0 && (
+                                <Box display="flex" flexWrap="wrap" gap={0.5} mt={1}>
+                                  <Typography variant="caption" sx={{ mr: 1, alignSelf: 'center' }}>
+                                    Languages:
+                                  </Typography>
+                                  {Array.isArray(option.languages) && option.languages.map((lang: string, index: number) => (
+                                    <Chip 
+                                      key={index} 
+                                      size="small" 
+                                      label={lang} 
+                                      variant="outlined" 
+                                      color="secondary"
+                                      sx={{ height: 20, fontSize: '0.7rem' }}
+                                    />
+                                  ))}
+                                </Box>
+                              )}
                             </Box>
                           </li>
                         );
@@ -700,6 +853,122 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                         </ul>
                       )}
                     />
+                    
+                    {selectedRule && (
+                      <Paper variant="outlined" sx={{ p: 2, mt: 2, bgcolor: theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.02)' }}>
+                        <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                          Selected Rule Details
+                        </Typography>
+                        
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} sm={6}>
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                              <strong>ID:</strong> {selectedRule.id}
+                            </Typography>
+                            {selectedRule.rule_id && (
+                              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                <strong>Rule ID:</strong> {selectedRule.rule_id}
+                              </Typography>
+                            )}
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                              <strong>Category:</strong> {selectedRule.category || 'N/A'}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                              <strong>Severity:</strong> {selectedRule.severity || 'N/A'}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                              <strong>Languages:</strong> {Array.isArray(selectedRule.languages) ? selectedRule.languages.join(', ') : selectedRule.languages || 'N/A'}
+                            </Typography>
+                            {selectedRule.path && (
+                              <Typography variant="body2" color="text.secondary" sx={{ mb: 1, fontWeight: 'bold', color: theme.palette.success.main }}>
+                                <strong>Path:</strong> {selectedRule.path}
+                              </Typography>
+                            )}
+                            {selectedRule.mode && (
+                              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                <strong>Mode:</strong> {selectedRule.mode}
+                              </Typography>
+                            )}
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            {selectedRule.message && (
+                              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                <strong>Message:</strong> {selectedRule.message}
+                              </Typography>
+                            )}
+                            {selectedRule.tags && selectedRule.tags.length > 0 && (
+                              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                <strong>Tags:</strong> {Array.isArray(selectedRule.tags) ? selectedRule.tags.join(', ') : selectedRule.tags}
+                              </Typography>
+                            )}
+                            {selectedRule.fix && (
+                              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                <strong>Fix:</strong> {selectedRule.fix}
+                              </Typography>
+                            )}
+                            {selectedRule.source_uri && (
+                              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                <strong>Source URI:</strong> {selectedRule.source_uri}
+                              </Typography>
+                            )}
+                            {selectedRule.visibility && (
+                              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                <strong>Visibility:</strong> {selectedRule.visibility}
+                              </Typography>
+                            )}
+                          </Grid>
+                          <Grid item xs={12}>
+                            {selectedRule.metadata && Object.keys(selectedRule.metadata).length > 0 && (
+                              <>
+                                <Typography variant="body2" fontWeight="bold" color="text.secondary" sx={{ mt: 2, mb: 1 }}>
+                                  Metadata:
+                                </Typography>
+                                <Box sx={{ pl: 2 }}>
+                                  {selectedRule.metadata.cwe && (
+                                    <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                                      <strong>CWE:</strong> {selectedRule.metadata.cwe}
+                                    </Typography>
+                                  )}
+                                  {selectedRule.metadata.owasp && (
+                                    <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                                      <strong>OWASP:</strong> {selectedRule.metadata.owasp}
+                                    </Typography>
+                                  )}
+                                  {selectedRule.metadata.references && (
+                                    <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                                      <strong>References:</strong> {Array.isArray(selectedRule.metadata.references) ? selectedRule.metadata.references.join(', ') : selectedRule.metadata.references}
+                                    </Typography>
+                                  )}
+                                  {selectedRule.metadata.technology && (
+                                    <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                                      <strong>Technology:</strong> {selectedRule.metadata.technology}
+                                    </Typography>
+                                  )}
+                                </Box>
+                              </>
+                            )}
+                            
+                            {selectedRule.patterns && selectedRule.patterns.length > 0 && (
+                              <>
+                                <Typography variant="body2" fontWeight="bold" color="text.secondary" sx={{ mt: 2, mb: 1 }}>
+                                  Pattern Rules:
+                                </Typography>
+                                <Box component="pre" sx={{ 
+                                  bgcolor: theme.palette.mode === 'dark' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(0, 0, 0, 0.05)', 
+                                  p: 1, 
+                                  borderRadius: 1,
+                                  fontSize: '0.8rem',
+                                  overflow: 'auto',
+                                  maxHeight: '200px'
+                                }}>
+                                  {JSON.stringify(selectedRule.patterns, null, 2)}
+                                </Box>
+                              </>
+                            )}
+                          </Grid>
+                        </Grid>
+                      </Paper>
+                    )}
                   </Box>
                 )}
                 
