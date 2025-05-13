@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { 
   Container, 
   Box, 
@@ -23,7 +23,10 @@ import {
   TextField,
   FormControl,
   FormLabel,
-  keyframes
+  keyframes,
+  Autocomplete,
+  InputAdornment,
+  ListSubheader
 } from '@mui/material';
 import { useDropzone } from 'react-dropzone';
 import axios from 'axios';
@@ -33,6 +36,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import ScanResults from './components/ScanResults';
 import { format } from 'date-fns';
+import SearchIcon from '@mui/icons-material/Search';
 
 interface Vulnerability {
   check_id: string;
@@ -95,6 +99,8 @@ function App() {
   const [ruleType, setRuleType] = useState<'auto' | 'custom'>('auto');
   const [customRule, setCustomRule] = useState('');
   const [customRuleError, setCustomRuleError] = useState<string | null>(null);
+  const [sastData, setSastData] = useState<any>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   // Computed properties for loading states
   const isSastLoading = loadingSastUpload || loadingSastProcessing;
@@ -187,57 +193,33 @@ function App() {
     }
   };
 
-  const startScan = async () => {
-    if (!uploadedFile) return;
-    
-    if (ruleType === 'custom' && !validateCustomRule(customRule)) {
-      return;
-    }
-    
-    try {
-      // Reset states at the start
-      setError(null);
-      setScanStarted(true);
+  const startScan = async () => {      try {        setError('');        setLoadingSastUpload(true);                const formData = new FormData();        formData.append('file', uploadedFile as File);        
+        if (ruleType === 'custom' && selectedRule) {
+          formData.append('custom_rule', selectedRule.registry_id || selectedRule.id || '');
+        }
       
-      // First set upload state
-      setLoadingSastUpload(true);
-      setLoadingSastProcessing(false);
-      
-      const formData = new FormData();
-      formData.append('file', uploadedFile);
-      
-      if (ruleType === 'custom' && customRule) {
-        formData.append('custom_rule', customRule);
-      }
-      
-      // Upload file
-      const response = await fetch(API_UPLOAD_URL, {
-        method: 'POST',
-        body: formData,
+      const response = await axios.post(`http://localhost:8000/api/v1/scan/upload`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        },
+        onUploadProgress: (progressEvent) => {
+          if (progressEvent.total) {
+            const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            setUploadProgress(progress);
+          }
+        }
       });
       
-      // Switch from upload to processing state
       setLoadingSastUpload(false);
       setLoadingSastProcessing(true);
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to scan file');
-      }
+      setSastData(response.data);
+      setScanResults(response.data);
+      setDialogOpen(true);
       
-      const data = await response.json();
-      
-      // Ensure processing state is visible for at least 1 second
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Update the results
-      setScanResults(data);
-      
-      // Then clear the processing state after results are set
-      setLoadingSastProcessing(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
-      // Clear all loading states in case of error
+      setError(err instanceof Error ? err.message : 'An error occurred during scanning');
+    } finally {
       setLoadingSastUpload(false);
       setLoadingSastProcessing(false);
     }
@@ -518,6 +500,86 @@ const classifyVulns = (vulns: Vulnerability[]) => {
     }
   };
 
+  // Add semgrep rules states
+  const [semgrepRules, setSemgrepRules] = useState<any[]>([]);
+  const [selectedRule, setSelectedRule] = useState<any | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [loadingRules, setLoadingRules] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [totalRules, setTotalRules] = useState(0);
+  
+  const autocompleteRef = useRef<HTMLDivElement>(null);
+  const listboxRef = useRef<HTMLUListElement>(null);
+
+  // Handle search query with debounce
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(searchQuery);
+  
+  // Add function to fetch semgrep rules FIRST
+  const fetchSemgrepRules = useCallback(async (query: string = '', newOffset: number = 0, append: boolean = false) => {
+    try {
+      setLoadingRules(true);
+      const response = await axios.get(`http://localhost:8000/api/v1/scan/semgrep-rules`, {
+        params: {
+          query: query || undefined,
+          limit: 50,
+          offset: newOffset
+        }
+      });
+      
+      const { rules, total, has_more } = response.data;
+      
+      // Log the first rule to understand its structure
+      if (rules && rules.length > 0) {
+        console.log('First rule structure:', rules[0]);
+      }
+      
+      // Update state based on whether we're appending or replacing
+      if (append) {
+        setSemgrepRules(prev => [...prev, ...rules]);
+      } else {
+        setSemgrepRules(rules);
+      }
+      
+      setTotalRules(total);
+      setHasMore(has_more);
+      setOffset(newOffset);
+    } catch (error) {
+      console.error('Error fetching semgrep rules:', error);
+    } finally {
+      setLoadingRules(false);
+    }
+  }, []);
+  
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 500);
+    
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+  
+  // Fetch rules when component mounts or when query changes
+  useEffect(() => {
+    if (ruleType === 'custom') {
+      // Reset pagination when query changes
+      setOffset(0);
+      setHasMore(true);
+      fetchSemgrepRules(debouncedSearchQuery, 0, false);
+    }
+  }, [ruleType, debouncedSearchQuery, fetchSemgrepRules]);
+  
+  // Handle infinite scroll
+  const handleScroll = useCallback((event: React.UIEvent<HTMLUListElement>) => {
+    if (!hasMore || loadingRules) return;
+    
+    const listbox = event.currentTarget;
+    if (listbox.scrollTop + listbox.clientHeight >= listbox.scrollHeight - 100) {
+      // We're close to the bottom, load more rules
+      fetchSemgrepRules(debouncedSearchQuery, offset + 50, true);
+    }
+  }, [hasMore, loadingRules, debouncedSearchQuery, offset, fetchSemgrepRules]);
+
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       <Box sx={{ mb: 4 }}>
@@ -552,33 +614,91 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                 
                 {ruleType === 'custom' && (
                   <Box sx={{ mb: 3 }}>
-                    <TextField
-                      fullWidth
-                      multiline
-                      rows={6}
-                      label="Custom Semgrep Rule (JSON format)"
-                      value={customRule}
-                      onChange={handleCustomRuleChange}
-                      error={!!customRuleError}
-                      helperText={
-                        customRuleError ||
-                        'Enter your custom Semgrep rule in JSON format. Example:\n' +
-                        '{\n' +
-                        '  "rules": [\n' +
-                        '    {\n' +
-                        '      "id": "hardcoded-password",\n' +
-                        '      "message": "Hard-coded password string",\n' +
-                        '      "severity": "ERROR",\n' +
-                        '      "languages": ["python"],\n' +
-                        '      "patterns": [\n' +
-                        '        { "pattern": "\\"password=\\"" }\n' +
-                        '      ]\n' +
-                        '    }\n' +
-                        '  ]\n' +
-                        '}'
-                      }
-                      
-                      sx={{ mb: 1 }}
+                    <Autocomplete
+                      id="semgrep-rules"
+                      options={semgrepRules}
+                      loading={loadingRules}
+                      value={selectedRule}
+                      onChange={(event, newValue) => {
+                        setSelectedRule(newValue);
+                      }}
+                      getOptionLabel={(option) => option.name || option.id || 'Unnamed Rule'}
+                      filterOptions={(x) => x} // Disable built-in filtering as we do server-side filtering
+                      ListboxProps={{
+                        onScroll: handleScroll,
+                        ref: listboxRef
+                      }}
+                      ref={autocompleteRef}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label="Select Semgrep Rule"
+                          InputProps={{
+                            ...params.InputProps,
+                            startAdornment: (
+                              <>
+                                <InputAdornment position="start">
+                                  <SearchIcon />
+                                </InputAdornment>
+                                {params.InputProps.startAdornment}
+                              </>
+                            ),
+                            endAdornment: (
+                              <>
+                                {loadingRules ? <CircularProgress color="inherit" size={20} /> : null}
+                                {params.InputProps.endAdornment}
+                              </>
+                            ),
+                          }}
+                          onChange={(e) => {
+                            setSearchQuery(e.target.value);
+                          }}
+                          helperText={`Search and select a rule from the Semgrep registry (${semgrepRules.length} of ${totalRules} rules loaded)`}
+                        />
+                      )}
+                      renderOption={(props, option) => {
+                        if (!option) return <li {...props}>Missing rule data</li>;
+                        
+                        return (
+                          <li {...props}>
+                            <Box>
+                              <Typography variant="body1" fontWeight="bold">{option.name || option.id || 'Unnamed Rule'}</Typography>
+                              <Typography variant="body2" color="text.secondary">{option.description || 'No description available'}</Typography>
+                              <Box display="flex" gap={1} mt={0.5}>
+                                {option.category && (
+                                  <Typography variant="caption" color="primary">
+                                    {option.category}
+                                  </Typography>
+                                )}
+                                {option.severity && (
+                                  <Typography variant="caption" color="error">
+                                    {option.severity}
+                                  </Typography>
+                                )}
+                                {option.languages && option.languages.length > 0 && (
+                                  <Typography variant="caption">
+                                    {Array.isArray(option.languages) ? option.languages.join(', ') : option.languages}
+                                  </Typography>
+                                )}
+                              </Box>
+                            </Box>
+                          </li>
+                        );
+                      }}
+                      ListboxComponent={(props) => (
+                        <ul {...props}>
+                          {props.children}
+                          {hasMore && (
+                            <ListSubheader style={{ textAlign: 'center', background: 'transparent' }}>
+                              {loadingRules ? (
+                                <CircularProgress size={24} />
+                              ) : (
+                                <Typography variant="caption">Scroll to load more</Typography>
+                              )}
+                            </ListSubheader>
+                          )}
+                        </ul>
+                      )}
                     />
                   </Box>
                 )}
@@ -589,7 +709,7 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                     color="primary" 
                     size="large" 
                     onClick={startScan} 
-                    disabled={isSastLoading || (ruleType === 'custom' && (!customRule || !!customRuleError))}
+                    disabled={isSastLoading || (ruleType === 'custom' && !selectedRule)}
                     sx={loadingSastProcessing ? processingButtonStyle : loadingSastUpload ? uploadingButtonStyle : {}}
                   >
                     {loadingSastUpload ? (
@@ -629,7 +749,7 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                     color="secondary"
                     size="large"
                     onClick={startCodeQLScan}
-                    disabled={isCodeQLLoading || (ruleType === 'custom' && (!customRule || !!customRuleError))}
+                    disabled={isCodeQLLoading || (ruleType === 'custom' && !selectedRule)}
                     sx={loadingCodeQLProcessing ? processingButtonStyle : loadingCodeQLUpload ? uploadingButtonStyle : {}}
                   >
                     {loadingCodeQLUpload ? (
