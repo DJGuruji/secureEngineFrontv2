@@ -185,15 +185,64 @@ const SemgrepRuleSelector: React.FC<SemgrepRuleSelectorProps> = ({
     }
   }, [hasMore, loadingRules, debouncedSearchQuery, offset, fetchSemgrepRules]);
 
+  const handleRuleSelection = async (event: any, newValue: any) => {
+    if (newValue && newValue.id) {
+      try {
+        // First update UI with the selected rule to avoid delay
+        setSelectedRule(newValue);
+        
+        // Use the rule ID directly for the API call instead of path
+        const ruleId = newValue.id;
+        
+        console.log(`Fetching detailed rule information for ID: ${ruleId}`);
+        console.log('Original selected rule:', newValue);
+        
+        // Then fetch detailed rule information using ID
+        const response = await axios.get(`http://localhost:8000/api/v1/scan/semgrep-rule/${ruleId}`);
+        
+        // Log the response structure for debugging
+        console.log('API response structure:', Object.keys(response.data));
+        console.log('API response data:', response.data);
+        
+        // Check for languages in the API response
+        if (response.data.definition && response.data.definition.rules && response.data.definition.rules.length > 0) {
+          console.log('Languages in definition:', response.data.definition.rules[0].languages);
+        }
+        
+        // Once we have complete details, update the selected rule
+        if (response.data) {
+          // Ensure we preserve both the path and ID from the response data
+          const mergedRule = {
+            ...newValue,
+            ...response.data,
+            // Make sure important fields from API response don't get overwritten
+            id: newValue.id || response.data.id,
+            path: response.data.path || newValue.path,
+          };
+          
+          console.log('Merged rule structure:', Object.keys(mergedRule));
+          console.log('Merged rule path:', mergedRule.path);
+          console.log('Merged rule:', mergedRule);
+          
+          setSelectedRule(mergedRule);
+        }
+      } catch (error) {
+        console.error('Error fetching detailed rule information:', error);
+        // Still keep the selected rule even if detail fetch fails
+        setSelectedRule(newValue);
+      }
+    } else {
+      setSelectedRule(newValue);
+    }
+  };
+
   return (
     <Autocomplete
       id="semgrep-rules"
       options={semgrepRules}
       loading={loadingRules}
       value={selectedRule}
-      onChange={(event, newValue) => {
-        setSelectedRule(newValue);
-      }}
+      onChange={handleRuleSelection}
       getOptionLabel={(option) => option.id || ''}
       filterOptions={(x) => x} // Disable built-in filtering as we do server-side filtering
       ListboxProps={{
