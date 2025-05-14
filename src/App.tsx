@@ -44,6 +44,7 @@ import FilterAltIcon from '@mui/icons-material/FilterAlt';
 import SecurityIcon from '@mui/icons-material/Security';
 import SpeedIcon from '@mui/icons-material/Speed';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import LaunchIcon from '@mui/icons-material/Launch';
 
 interface Vulnerability {
   check_id: string;
@@ -558,41 +559,14 @@ const classifyVulns = (vulns: Vulnerability[]) => {
       // Log comprehensive information about received rules
       console.log(`Received ${rules?.length || 0} rules from API`);
       
+      // Log structure of first rule to help debugging
       if (rules && rules.length > 0) {
-        // Log first rule details
         console.log('First rule structure:', rules[0]);
-        
-        // Count rules with various properties
-        const ruleStats = {
-          withName: 0,
-          withDescription: 0,
-          withLanguages: 0,
-          withPython: 0,
-          withJavaScript: 0,
-          withTypeScript: 0,
-          withJava: 0,
-          withGo: 0
-        };
-        
-        // Check each rule
-        rules.forEach((rule: any) => {
-          if (rule.name && rule.name !== 'Unknown Rule') ruleStats.withName++;
-          if (rule.description && rule.description !== 'No description available') ruleStats.withDescription++;
-          
-          if (rule.languages && Array.isArray(rule.languages) && rule.languages.length > 0) {
-            ruleStats.withLanguages++;
-            
-            // Check for specific languages
-            const languages = rule.languages.map((l: string) => l.toLowerCase());
-            if (languages.includes('python')) ruleStats.withPython++;
-            if (languages.includes('javascript')) ruleStats.withJavaScript++;
-            if (languages.includes('typescript')) ruleStats.withTypeScript++;
-            if (languages.includes('java')) ruleStats.withJava++;
-            if (languages.includes('go')) ruleStats.withGo++;
-          }
-        });
-        
-        console.log('Rule statistics:', ruleStats);
+        console.log('Languages in first rule:', rules[0].languages);
+        console.log('Meta object in first rule:', rules[0].meta);
+        if (rules[0].meta && rules[0].meta.languages) {
+          console.log('Languages in meta:', rules[0].meta.languages);
+        }
       }
       
       // Don't filter out incomplete rules - just ensure they have an ID
@@ -601,7 +575,15 @@ const classifyVulns = (vulns: Vulnerability[]) => {
       // Apply client-side filtering for languages
       if (languageFilter.length > 0) {
         validRules = validRules.filter((rule: any) => {
-          // Check in rule.languages array
+          // Check in rule.meta.languages array first if it exists
+          if (rule.meta && rule.meta.languages && Array.isArray(rule.meta.languages)) {
+            if (rule.meta.languages.some((lang: string) => 
+              languageFilter.includes(lang.toLowerCase()))) {
+              return true;
+            }
+          }
+          
+          // Then check in rule.languages array
           if (rule.languages && Array.isArray(rule.languages)) {
             if (rule.languages.some((lang: string) => 
               languageFilter.includes(lang.toLowerCase()))) {
@@ -622,9 +604,13 @@ const classifyVulns = (vulns: Vulnerability[]) => {
       // Apply client-side filtering for category
       if (categoryFilter.length > 0) {
         validRules = validRules.filter((rule: any) => {
-          if (!rule.category) return false;
+          // Check both direct category and meta.category field
+          const directCategory = rule.category || '';
+          const metaCategory = rule.meta && rule.meta.category ? rule.meta.category : '';
           
-          const ruleCategoryLower = rule.category.toLowerCase();
+          if (!directCategory && !metaCategory) return false;
+          
+          const ruleCategoryLower = (directCategory || metaCategory).toLowerCase();
           return categoryFilter.some(category => 
             ruleCategoryLower.includes(category.toLowerCase()));
         });
@@ -1385,23 +1371,28 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                                 )}
                               </Box>
                               
-                              {option.languages && option.languages.length > 0 && (
+                              {/* Languages - Priority given to meta.languages */}
+                              {(option.meta && Array.isArray(option.meta.languages) && option.meta.languages.length > 0) || 
+                               (Array.isArray(option.languages) && option.languages.length > 0) ? (
                                 <Box display="flex" flexWrap="wrap" gap={0.5} mt={1}>
                                   <Typography variant="caption" sx={{ mr: 1, alignSelf: 'center' }}>
                                     Languages:
                                   </Typography>
-                                  {Array.isArray(option.languages) && option.languages.map((lang: string, index: number) => (
-                                    <Chip 
-                                      key={index} 
-                                      size="small" 
-                                      label={lang} 
-                                      variant="outlined" 
-                                      color="secondary"
-                                      sx={{ height: 20, fontSize: '0.7rem' }}
-                                    />
-                                  ))}
+                                  {/* Prioritize meta.languages over languages */}
+                                  {((option.meta && Array.isArray(option.meta.languages)) 
+                                    ? option.meta.languages 
+                                    : option.languages || []).map((lang: string, idx: number) => (
+                                     <Chip 
+                                       key={idx} 
+                                       label={lang} 
+                                       size="small" 
+                                       variant="outlined" 
+                                       color="secondary"
+                                       sx={{ height: 20, fontSize: '0.7rem' }}
+                                     />
+                                   ))}
                                 </Box>
-                              )}
+                              ) : null}
                             </Box>
                           </li>
                         );
@@ -1496,16 +1487,16 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                                         <td>{selectedRule.rule_id}</td>
                                       </tr>
                                     )}
-                                    <tr>
-                                      <td style={{ padding: '4px 0', width: '35%', fontWeight: 'bold' }}>Category:</td>
-                                      <td>{selectedRule.category || 'N/A'}</td>
-                                    </tr>
-                                    <tr>
-                                      <td style={{ padding: '4px 0', fontWeight: 'bold' }}>Languages:</td>
-                                      <td>
-                                        {Array.isArray(selectedRule.languages) && selectedRule.languages.length > 0 ? (
+                                    {((Array.isArray(selectedRule.languages) && selectedRule.languages.length > 0) || 
+                                      (selectedRule.meta && Array.isArray(selectedRule.meta.languages) && selectedRule.meta.languages.length > 0)) && (
+                                      <tr>
+                                        <td style={{ padding: '4px 0', fontWeight: 'bold' }}>Languages:</td>
+                                        <td>
                                           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                            {selectedRule.languages.map((lang, idx) => (
+                                            {/* Prioritize meta.languages over languages */}
+                                            {((selectedRule.meta && Array.isArray(selectedRule.meta.languages)) 
+                                              ? selectedRule.meta.languages 
+                                              : selectedRule.languages || []).map((lang: string, idx: number) => (
                                               <Chip 
                                                 key={idx} 
                                                 label={lang} 
@@ -1515,33 +1506,59 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                                               />
                                             ))}
                                           </Box>
-                                        ) : 'N/A'}
-                                      </td>
-                                    </tr>
-                                    {selectedRule.path && (
-                                      <tr>
-                                        <td style={{ padding: '4px 0', fontWeight: 'bold' }}>Path:</td>
-                                        <td style={{ color: theme.palette.success.main }}>{selectedRule.path}</td>
+                                        </td>
                                       </tr>
                                     )}
+                                    {/* Path field removed */}
                                     {selectedRule.mode && (
                                       <tr>
                                         <td style={{ padding: '4px 0', fontWeight: 'bold' }}>Mode:</td>
                                         <td>{selectedRule.mode}</td>
                                       </tr>
                                     )}
-                                    {selectedRule.visibility && (
-                                      <tr>
-                                        <td style={{ padding: '4px 0', fontWeight: 'bold' }}>Visibility:</td>
-                                        <td>{selectedRule.visibility}</td>
-                                      </tr>
-                                    )}
-                                    {selectedRule.metadata?.cwe && (
+                                    {(selectedRule.metadata?.cwe || (selectedRule.meta && selectedRule.meta.cwe)) && (
                                       <tr>
                                         <td style={{ padding: '4px 0', fontWeight: 'bold' }}>CWE:</td>
-                                        <td style={{ color: theme.palette.error.main }}>{selectedRule.metadata.cwe}</td>
+                                        <td>
+                                          <Chip 
+                                            label={`CWE-${selectedRule.metadata?.cwe || (selectedRule.meta && selectedRule.meta.cwe)}`}
+                                            color="error"
+                                            size="small"
+                                            sx={{ fontWeight: 'bold' }}
+                                            component="a"
+                                            href={`https://cwe.mitre.org/data/definitions/${selectedRule.metadata?.cwe || (selectedRule.meta && selectedRule.meta.cwe)}.html`}
+                                            target="_blank"
+                                            clickable
+                                          />
+                                        </td>
                                       </tr>
                                     )}
+                                    {(selectedRule.metadata?.owasp || (selectedRule.meta && selectedRule.meta.owasp)) && (
+                                      <tr>
+                                        <td style={{ padding: '4px 0', fontWeight: 'bold' }}>OWASP:</td>
+                                        <td>
+                                          <Chip 
+                                            label={selectedRule.metadata?.owasp || (selectedRule.meta && selectedRule.meta.owasp)}
+                                            color="warning"
+                                            size="small"
+                                            sx={{ fontWeight: 'bold' }}
+                                          />
+                                        </td>
+                                      </tr>
+                                    )}
+                                    <tr>
+                                      <td style={{ padding: '4px 0', width: '35%', fontWeight: 'bold' }}>Category:</td>
+                                      <td>
+                                        {selectedRule.category || (selectedRule.meta && selectedRule.meta.category) ? (
+                                          <Chip 
+                                            label={selectedRule.category || (selectedRule.meta && selectedRule.meta.category)}
+                                            color="primary"
+                                            size="small"
+                                            sx={{ fontWeight: 'bold' }}
+                                          />
+                                        ) : 'N/A'}
+                                      </td>
+                                    </tr>
                                   </tbody>
                                 </table>
                               </Box>
@@ -1580,7 +1597,7 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                                   <Box sx={{ mb: 2 }}>
                                     <Typography variant="body2" fontWeight="bold" sx={{ mb: 0.5 }}>Tags:</Typography>
                                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                      {Array.isArray(selectedRule.tags) && selectedRule.tags.map((tag, idx) => (
+                                      {Array.isArray(selectedRule.tags) && selectedRule.tags.map((tag: string, idx: number) => (
                                         <Chip 
                                           key={idx} 
                                           label={tag} 
@@ -1601,25 +1618,28 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                                 )}
                                 
                                 {selectedRule.source_uri && (
-                                  <Box sx={{ mb: 2 }}>
-                                    <Typography variant="body2" fontWeight="bold">Source URI:</Typography>
-                                    <Typography 
-                                      variant="body2" 
-                                      component="a" 
-                                      href={selectedRule.source_uri} 
-                                      target="_blank" 
+                                  <Box sx={{ mb: 2, display: 'flex', alignItems: 'center' }}>
+                                    <Typography variant="body2" fontWeight="bold" sx={{ mr: 1 }}>Source:</Typography>
+                                    <IconButton
+                                      component="a"
+                                      href={selectedRule.source_uri}
+                                      target="_blank"
                                       rel="noopener noreferrer"
-                                      sx={{ color: theme.palette.primary.main }}
+                                      size="small"
+                                      color="primary"
+                                      aria-label="View Source"
+                                      title={selectedRule.source_uri}
                                     >
-                                      {selectedRule.source_uri}
-                                    </Typography>
+                                      <LaunchIcon fontSize="small" />
+                                    </IconButton>
                                   </Box>
                                 )}
                               </Box>
                             </Grid>
                             
-                            {/* Metadata section */}
-                            {selectedRule.metadata && Object.keys(selectedRule.metadata).length > 0 && (
+                                                          {/* Metadata section */}
+                              {((selectedRule.metadata && Object.keys(selectedRule.metadata).length > 0) || 
+                               (selectedRule.meta && Object.keys(selectedRule.meta).length > 0)) && (
                               <Grid item xs={12}>
                                 <Box 
                                   sx={{ 
@@ -1628,54 +1648,149 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                                     bgcolor: theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.02)',
                                   }}
                                 >
-                                  <Typography variant="subtitle1" color="primary" gutterBottom>
-                                    Security Metadata
-                                  </Typography>
-                                  
                                   <Grid container spacing={2}>
-                                    {selectedRule.metadata.owasp && (
+                                    {(selectedRule.metadata?.owasp || (selectedRule.meta && selectedRule.meta.owasp)) && (
                                       <Grid item xs={12} sm={6} md={4}>
                                         <Paper variant="outlined" sx={{ p: 1.5 }}>
                                           <Typography variant="body2" fontWeight="bold" color="error">
                                             OWASP Reference
                                           </Typography>
-                                          <Typography variant="body2">{selectedRule.metadata.owasp}</Typography>
+                                          <Typography variant="body2">
+                                            {selectedRule.metadata?.owasp || (selectedRule.meta && selectedRule.meta.owasp)}
+                                          </Typography>
                                         </Paper>
                                       </Grid>
                                     )}
                                     
-                                    {selectedRule.metadata.cwe && (
+                                    {(selectedRule.metadata?.cwe || (selectedRule.meta && selectedRule.meta.cwe)) && (
+                                      <Grid item xs={12} sm={6} md={4}>
+                                        <Paper variant="outlined" sx={{ p: 1.5, borderColor: theme.palette.error.main }}>
+                                          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                                            <SecurityIcon color="error" sx={{ mr: 1 }} />
+                                            <Typography variant="body1" fontWeight="bold" color="error">
+                                              CWE Reference
+                                            </Typography>
+                                          </Box>
+                                          <Button 
+                                            variant="outlined" 
+                                            color="error" 
+                                            size="small"
+                                            href={`https://cwe.mitre.org/data/definitions/${selectedRule.metadata?.cwe || (selectedRule.meta && selectedRule.meta.cwe)}.html`}
+                                            target="_blank"
+                                            startIcon={<LaunchIcon />}
+                                            fullWidth
+                                          >
+                                            CWE-{selectedRule.metadata?.cwe || (selectedRule.meta && selectedRule.meta.cwe)}: View Details
+                                          </Button>
+                                        </Paper>
+                                      </Grid>
+                                    )}
+                                    
+                                    {/* Display additional security-related metadata fields from both locations */}
+                                    {(selectedRule.metadata?.impact || (selectedRule.meta && selectedRule.meta.impact)) && (
                                       <Grid item xs={12} sm={6} md={4}>
                                         <Paper variant="outlined" sx={{ p: 1.5 }}>
-                                          <Typography variant="body2" fontWeight="bold" color="error">
-                                            CWE Reference
+                                          <Typography variant="body2" fontWeight="bold" color="primary">
+                                            Security Impact
                                           </Typography>
-                                          <Typography variant="body2">{selectedRule.metadata.cwe}</Typography>
+                                          <Typography variant="body2">
+                                            {selectedRule.metadata?.impact || (selectedRule.meta && selectedRule.meta.impact)}
+                                          </Typography>
                                         </Paper>
                                       </Grid>
                                     )}
                                     
-                                    {selectedRule.metadata.technology && (
+                                    {(selectedRule.metadata?.confidence || (selectedRule.meta && selectedRule.meta.confidence)) && (
+                                      <Grid item xs={12} sm={6} md={4}>
+                                        <Paper variant="outlined" sx={{ p: 1.5 }}>
+                                          <Typography variant="body2" fontWeight="bold" color="primary">
+                                            Detection Confidence
+                                          </Typography>
+                                          <Typography variant="body2">
+                                            {selectedRule.metadata?.confidence || (selectedRule.meta && selectedRule.meta.confidence)}
+                                          </Typography>
+                                        </Paper>
+                                      </Grid>
+                                    )}
+                                    
+                                    {(selectedRule.metadata?.likelihood || (selectedRule.meta && selectedRule.meta.likelihood)) && (
+                                      <Grid item xs={12} sm={6} md={4}>
+                                        <Paper variant="outlined" sx={{ p: 1.5 }}>
+                                          <Typography variant="body2" fontWeight="bold" color="primary">
+                                            Exploitation Likelihood
+                                          </Typography>
+                                          <Typography variant="body2">
+                                            {selectedRule.metadata?.likelihood || (selectedRule.meta && selectedRule.meta.likelihood)}
+                                          </Typography>
+                                        </Paper>
+                                      </Grid>
+                                    )}
+                                    
+                                    {/* Display any additional metadata from meta field */}
+                                    {selectedRule.meta && Object.entries(selectedRule.meta)
+                                      .filter(([key]) => 
+                                        // Display important fields and filter out unwanted/already shown fields
+                                        !['owasp', 'cwe', 'category', 'impact', 'confidence', 'likelihood', 
+                                          'author_photo_url', 'author', 'languages', 'rule'].includes(key)
+                                      )
+                                      .map(([key, value]) => (
+                                        <Grid item xs={12} sm={6} md={4} key={key}>
+                                          <Paper variant="outlined" sx={{ p: 1.5 }}>
+                                            <Typography variant="body2" fontWeight="bold" color="primary">
+                                              {key.charAt(0).toUpperCase() + key.slice(1)}
+                                            </Typography>
+                                            <Typography variant="body2">
+                                              {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                                            </Typography>
+                                          </Paper>
+                                        </Grid>
+                                      ))
+                                    }
+                                    
+                                    {/* Similarly check metadata field for other properties */}
+                                    {selectedRule.metadata && Object.entries(selectedRule.metadata)
+                                      .filter(([key]) => 
+                                        // Display important fields and filter out unwanted/already shown fields
+                                        !['owasp', 'cwe', 'category', 'impact', 'confidence', 'likelihood', 
+                                          'technology', 'references'].includes(key)
+                                      )
+                                      .map(([key, value]) => (
+                                        <Grid item xs={12} sm={6} md={4} key={key}>
+                                          <Paper variant="outlined" sx={{ p: 1.5 }}>
+                                            <Typography variant="body2" fontWeight="bold" color="primary">
+                                              {key.charAt(0).toUpperCase() + key.slice(1)}
+                                            </Typography>
+                                            <Typography variant="body2">
+                                              {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                                            </Typography>
+                                          </Paper>
+                                        </Grid>
+                                      ))
+                                    }
+                                    
+                                    {(selectedRule.metadata?.technology || (selectedRule.meta && selectedRule.meta.technology)) && (
                                       <Grid item xs={12} sm={6} md={4}>
                                         <Paper variant="outlined" sx={{ p: 1.5 }}>
                                           <Typography variant="body2" fontWeight="bold" color="primary">
                                             Technology
                                           </Typography>
-                                          <Typography variant="body2">{selectedRule.metadata.technology}</Typography>
+                                          <Typography variant="body2">
+                                            {selectedRule.metadata?.technology || (selectedRule.meta && selectedRule.meta.technology)}
+                                          </Typography>
                                         </Paper>
                                       </Grid>
                                     )}
                                     
-                                    {selectedRule.metadata.references && (
+                                    {(selectedRule.metadata?.references || (selectedRule.meta && selectedRule.meta.references)) && (
                                       <Grid item xs={12}>
                                         <Paper variant="outlined" sx={{ p: 1.5 }}>
                                           <Typography variant="body2" fontWeight="bold" color="primary">
                                             References
                                           </Typography>
                                           <Typography variant="body2">
-                                            {Array.isArray(selectedRule.metadata.references) 
-                                              ? selectedRule.metadata.references.join(', ') 
-                                              : selectedRule.metadata.references}
+                                            {Array.isArray(selectedRule.metadata?.references || (selectedRule.meta && selectedRule.meta.references))
+                                              ? (selectedRule.metadata?.references || (selectedRule.meta && selectedRule.meta.references)).join(', ')
+                                              : (selectedRule.metadata?.references || (selectedRule.meta && selectedRule.meta.references))}
                                           </Typography>
                                         </Paper>
                                       </Grid>
@@ -1741,7 +1856,7 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                     {loadingSastUpload ? (
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <CircularProgress size={16} color="inherit" />
-                        Uploading File...
+                        Scanning File...
                       </Box>
                     ) : loadingSastProcessing ? (
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
