@@ -1,5 +1,5 @@
 // src/components/ScanResults.tsx
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Typography,
@@ -11,6 +11,21 @@ import {
   CircularProgress,
   Paper,
   Grid,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  LinearProgress,
+  Card,
+  CardContent,
+  IconButton,
+  Tooltip,
+  Badge,
 } from '@mui/material';
 import ErrorIcon from '@mui/icons-material/Error';
 import WarningIcon from '@mui/icons-material/Warning';
@@ -21,6 +36,7 @@ import BugReportIcon from '@mui/icons-material/BugReport';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import TimerIcon from '@mui/icons-material/Timer';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { format } from 'date-fns';
 
 /* ------------------------------------------------------------------ */
@@ -62,11 +78,21 @@ interface ScanResultsProps {
       path: string;
       start: { line: number };
       end: { line: number };
-      extra: { message: string; severity: string };
+      extra: { 
+        message: string; 
+        severity: string;
+        owasp_category?: string;
+        cwe_id?: string;
+        description?: string;
+        code_snippet?: string;
+        remediation?: string;
+        references?: string[];
+      };
       risk_severity: number;
       exploitability: string;
       impact: string;
       detection_timestamp: string;
+      source?: string;
     }>;
     severity_count: { ERROR: number; WARNING: number; INFO: number };
     scan_timestamp?: string;
@@ -78,11 +104,23 @@ interface ScanResultsProps {
       scan_type?: string;
       environment?: string;
       scan_mode?: string;
+      scan_sources?: string[];
+      individual_scores?: {
+        semgrep: number;
+        shiftleft: number;
+        codeql: number;
+      };
     };
   };
 }
 
 const ScanResults: React.FC<ScanResultsProps> = ({ results }) => {
+  const [expandedPanel, setExpandedPanel] = useState<string | false>('vulnerable');
+
+  const handlePanelChange = (panel: string) => (event: React.SyntheticEvent, isExpanded: boolean) => {
+    setExpandedPanel(isExpanded ? panel : false);
+  };
+
   const {
     security_score,
     vulnerabilities,
@@ -91,6 +129,10 @@ const ScanResults: React.FC<ScanResultsProps> = ({ results }) => {
     scan_duration,
     scan_metadata,
   } = results;
+
+  // Check if this is a combined scan
+  const isCombinedScan = scan_metadata?.scan_type === 'Combined SAST';
+  const individualScores = isCombinedScan ? scan_metadata?.individual_scores : null;
 
   /* utilities */
   const formatDuration = (secs?: number) => {
@@ -137,7 +179,7 @@ const ScanResults: React.FC<ScanResultsProps> = ({ results }) => {
                 sx={{ position: 'absolute', color: 'white', opacity: 0.25 }}
               />
               <Typography variant="h3" component="div">
-                {security_score}/10
+                {Math.floor(security_score)}/10
               </Typography>
             </Box>
           </Paper>
@@ -176,7 +218,10 @@ const ScanResults: React.FC<ScanResultsProps> = ({ results }) => {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <SecurityIcon color="action" />
                 <Typography variant="body1">
-                  Scan Type: {scan_metadata?.scan_type ?? 'SAST'}
+                  {scan_metadata?.scan_sources ? 
+                    `Tools Used: ${scan_metadata.scan_sources.join(', ')}` : 
+                    `Scan Type: ${scan_metadata?.scan_type || 'SAST'}`
+                  }
                 </Typography>
               </Box>
             </Box>
@@ -211,48 +256,116 @@ const ScanResults: React.FC<ScanResultsProps> = ({ results }) => {
         <List>
           {vulnerabilities.map((vuln, idx) => (
             <React.Fragment key={idx}>
-              <ListItem alignItems="flex-start">
-                <ListItemText
-                  disableTypography          /* ✨ <— crucial line */
-                  primary={
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <SeverityIcon severity={vuln.extra.severity} />
-                      <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-                        {vuln.extra.message}
-                      </Typography>
+              <ListItem alignItems="flex-start" sx={{ flexDirection: 'column', py: 2 }}>
+                {/* Header with severity and title */}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%', mb: 1 }}>
+                  <SeverityIcon severity={vuln.extra.severity} />
+                  <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                    {vuln.extra.message}
+                  </Typography>
+                </Box>
+                
+                {/* Vulnerability details in card format */}
+                <Card variant="outlined" sx={{ width: '100%', mt: 1 }}>
+                  <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                    {/* Risk metrics row */}
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+                      <RiskIndicator severity={vuln.risk_severity} />
+                      <Chip
+                        icon={<BugReportIcon sx={{ fontSize: '1.2rem' }} />}
+                        label={`Exploitability: ${vuln.exploitability}`}
+                        size="small"
+                      />
+                      <Chip
+                        icon={<TimelineIcon sx={{ fontSize: '1.2rem' }} />}
+                        label={`Impact: ${vuln.impact}`}
+                        size="small"
+                      />
+                      
+                      {/* OWASP/CWE mapping if available */}
+                      {vuln.extra.owasp_category && (
+                        <Chip
+                          label={`OWASP: ${vuln.extra.owasp_category}`}
+                          color="secondary"
+                          size="small"
+                        />
+                      )}
+                      {vuln.extra.cwe_id && (
+                        <Chip
+                          label={`CWE: ${vuln.extra.cwe_id}`}
+                          color="info"
+                          size="small"
+                        />
+                      )}
                     </Box>
-                  }
-                  secondary={
-                    <Box sx={{ mt: 0.5 }}>
-                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1 }}>
-                        <RiskIndicator severity={vuln.risk_severity} />
-                        <Chip
-                          icon={<BugReportIcon sx={{ fontSize: '1.2rem' }} />}
-                          label={`Exploitability: ${vuln.exploitability}`}
-                          size="small"
-                        />
-                        <Chip
-                          icon={<TimelineIcon sx={{ fontSize: '1.2rem' }} />}
-                          label={`Impact: ${vuln.impact}`}
-                          size="small"
-                        />
+                    
+                    {/* Location information */}
+                    <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                      Location: {vuln.path}:{vuln.start.line}-{vuln.end.line}
+                    </Typography>
+                    
+                    {/* Description with business context */}
+                    {vuln.extra.description && (
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: 'text.primary' }}>
+                          📜 Description
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, ml: 1 }}>
+                          {vuln.extra.description}
+                        </Typography>
                       </Box>
-
-                      <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-                        {vuln.path}:{vuln.start.line}-{vuln.end.line}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
+                    )}
+                    
+                    {/* Evidence/Code snippet */}
+                    {vuln.extra.code_snippet && (
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: 'text.primary' }}>
+                          🔎 Evidence
+                        </Typography>
+                        <Paper 
+                          variant="outlined" 
+                          sx={{ 
+                            mt: 0.5, 
+                            ml: 1, 
+                            p: 1, 
+                            backgroundColor: 'grey.100', 
+                            fontSize: '0.875rem',
+                            fontFamily: 'monospace',
+                            overflow: 'auto',
+                            maxHeight: '150px'
+                          }}
+                        >
+                          <pre style={{ margin: 0 }}>{vuln.extra.code_snippet}</pre>
+                        </Paper>
+                      </Box>
+                    )}
+                    
+                    {/* Remediation guidance */}
+                    {vuln.extra.remediation && (
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: 'text.primary' }}>
+                          ✅ Suggested Remediation
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, ml: 1 }}>
+                          {vuln.extra.remediation}
+                        </Typography>
+                      </Box>
+                    )}
+                    
+                    {/* Metadata and detection info */}
+                    <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                      <Typography variant="caption" color="text.secondary">
                         Check ID: {vuln.check_id}
                       </Typography>
-                      <Typography variant="body2" color="text.secondary">
+                      <Typography variant="caption" color="text.secondary">
                         Detected:{' '}
                         {validDate(vuln.detection_timestamp)
                           ? format(validDate(vuln.detection_timestamp)!, 'PPpp')
                           : 'N/A'}
                       </Typography>
                     </Box>
-                  }
-                />
+                  </CardContent>
+                </Card>
               </ListItem>
               {idx < vulnerabilities.length - 1 && <Divider component="li" />}
             </React.Fragment>

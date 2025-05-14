@@ -59,9 +59,14 @@ interface ScanHistoryItem {
   scan_duration: number;
   scan_status: string;
   scan_metadata?: {
-    scan_type: 'CodeQL' | 'ShiftLeft' | 'Semgrep';
+    scan_type: 'CodeQL' | 'ShiftLeft' | 'Semgrep' | 'Combined SAST';
     scan_mode?: 'custom' | 'auto';
     language?: string;
+    individual_durations?: {
+      semgrep?: number;
+      codeql?: number;
+      shiftleft?: number;
+    };
   };
 }
 
@@ -134,13 +139,18 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
         params: { limit: rowsPerPage, offset: page * rowsPerPage },
       });
 
+      // Filter to only show combined scan results
+      let filteredData;
+      
       // Support both paginated (items+total) and bare array responses
       if (Array.isArray(data)) {
-        setHistory(data);
-        setTotalCount(data.length);
+        filteredData = data.filter(scan => scan.scan_metadata?.scan_type === 'Combined SAST');
+        setHistory(filteredData);
+        setTotalCount(filteredData.length);
       } else {
-        setHistory(data.items);
-        setTotalCount(data.total);
+        filteredData = data.items.filter(scan => scan.scan_metadata?.scan_type === 'Combined SAST');
+        setHistory(filteredData);
+        setTotalCount(filteredData.length); // We set the count to the filtered length, not the total from API
       }
     } catch (err) {
       console.error('Error fetching scan history:', err);
@@ -248,9 +258,18 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
   return (
     <Box>
       <Typography variant="h6" gutterBottom>
-        Scan History
+        Combined Scan History
       </Typography>
-
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+          <CircularProgress />
+        </Box>
+      ) : history.length === 0 ? (
+        <Alert severity="info" sx={{ mt: 2 }}>
+          <AlertTitle>No Combined Scan Results</AlertTitle>
+          No combined security scans have been performed yet. Run a combined scan to see results here.
+        </Alert>
+      ) : (
       <TableContainer component={Paper} sx={{ position: 'relative' }}>
         {loading && (
           <Box
@@ -276,7 +295,6 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
               <TableCell>Scan&nbsp;Time</TableCell>
               <TableCell>Security&nbsp;Score</TableCell>
               <TableCell>Vulnerabilities</TableCell>
-              <TableCell>Duration</TableCell>
               <TableCell>Status</TableCell>
               <TableCell width={180}>Actions</TableCell>
             </TableRow>
@@ -362,7 +380,7 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
                 <TableCell>
                   <Chip
                     size="small"
-                    label={`${scan.security_score}/10`}
+                    label={`${Math.floor(scan.security_score)}/10`}
                     color={
                       scan.security_score >= 7
                         ? 'success'
@@ -382,8 +400,7 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
                   </Box>
                 </TableCell>
 
-                {/* ---------------- Duration ---------------- */}
-                <TableCell>{scan.scan_duration.toFixed(2)} s</TableCell>
+                
 
                 {/* ---------------- Status ---------------- */}
                 <TableCell>
@@ -459,6 +476,7 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
           onRowsPerPageChange={handleChangeRowsPerPage}
         />
       </TableContainer>
+      )}
 
       {/* ---------------- Delete dialog ---------------- */}
       <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>

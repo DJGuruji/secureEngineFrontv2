@@ -91,6 +91,12 @@ function TabPanel(props: TabPanelProps) {
   );
 }
 
+interface SemgrepRulesResponse {
+  rules: any[];
+  total: number;
+  has_more: boolean;
+}
+
 function App() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -171,6 +177,7 @@ function App() {
     setScanResults(null);
     setScanStarted(false);
     setError(null);
+    setResultsButtonClicked(false); // Reset for new file upload
   };
 
   const validateCustomRule = (rule: string): boolean => {
@@ -213,9 +220,11 @@ function App() {
         headers: {
           'Content-Type': 'multipart/form-data'
         },
-        onUploadProgress: (progressEvent) => {
-          if (progressEvent.total) {
-            const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+        // @ts-ignore - Suppress the TypeScript error for axios progress event
+        onUploadProgress: (progressEvent: any) => {
+          const total = progressEvent.total as number;
+          if (total) {
+            const progress = Math.round((progressEvent.loaded as number * 100) / total);
             setUploadProgress(progress);
           }
         }
@@ -397,8 +406,17 @@ const classifyVulns = (vulns: Vulnerability[]) => {
   const handleCloseDialog = () => {
     setDialogOpen(false);
     setScanResults(null);
+    // Don't reset resultsButtonClicked so the button stays hidden
   };
 
+  // Add new state variables for storing all scan results
+  const [semgrepResults, setSemgrepResults] = useState<any>(null);
+  const [shiftLeftResults, setShiftLeftResults] = useState<any>(null);
+  const [codeQLResults, setCodeQLResults] = useState<any>(null);
+  const [combinedResults, setCombinedResults] = useState<any>(null);
+  // Add state to track if the results button has been clicked
+  const [resultsButtonClicked, setResultsButtonClicked] = useState<boolean>(false);
+  
   // Add a function to run all scanners
   const runAllScanners = async () => {
     if (!uploadedFile) return;
@@ -406,6 +424,13 @@ const classifyVulns = (vulns: Vulnerability[]) => {
     setError(null);
     setScanStarted(true);
     setRunningAllSast(true);
+    setResultsButtonClicked(false); // Reset so the results button will show for this new scan
+    
+    // Reset all result states
+    setSemgrepResults(null);
+    setShiftLeftResults(null);
+    setCodeQLResults(null);
+    setCombinedResults(null);
     
     try {
       // Run Semgrep scan first
@@ -433,7 +458,7 @@ const classifyVulns = (vulns: Vulnerability[]) => {
       }
       
       const semgrepData = await semgrepResponse.json();
-      const semgrepResults = semgrepData;
+      setSemgrepResults(semgrepData);
       
       // Allow UI to update for a moment
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -460,7 +485,7 @@ const classifyVulns = (vulns: Vulnerability[]) => {
       }
       
       const shiftleftData = await shiftleftResponse.json();
-      const shiftleftResults = shiftleftData;
+      setShiftLeftResults(shiftleftData);
       
       // Allow UI to update for a moment
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -487,14 +512,13 @@ const classifyVulns = (vulns: Vulnerability[]) => {
       }
       
       const codeqlData = await codeqlResponse.json();
+      setCodeQLResults(codeqlData);
+      
+      // Rather than showing the dialog immediately, combine the results
+      await combineAndStoreResults(semgrepData, shiftleftData, codeqlData);
       
       // Clear all loading states
       setLoadingCodeQLProcessing(false);
-      
-      // Combine results - for now, use the last scan's results
-      // A more advanced implementation could combine all results
-      setScanResults(codeqlData);
-      setDialogOpen(true);
       
     } catch (err) {
       // Clear all loading states in case of error
@@ -553,27 +577,29 @@ const classifyVulns = (vulns: Vulnerability[]) => {
       // Add language filter - handled client-side
       // Add category filter - handled client-side
       
-      const response = await axios.get(`http://localhost:8000/api/v1/scan/semgrep-rules`, {
+      const response = await axios.get<SemgrepRulesResponse>(`http://localhost:8000/api/v1/scan/semgrep-rules`, {
         params
       });
       
-      const { rules, total, has_more } = response.data;
+      const newRules = response.data.rules || [];
+      setTotalRules(response.data.total || 0);
+      setHasMore(response.data.has_more || false);
       
       // Log comprehensive information about received rules
-      console.log(`Received ${rules?.length || 0} rules from API`);
+      console.log(`Received ${newRules?.length || 0} rules from API`);
       
       // Log structure of first rule to help debugging
-      if (rules && rules.length > 0) {
-        console.log('First rule structure:', rules[0]);
-        console.log('Languages in first rule:', rules[0].languages);
-        console.log('Meta object in first rule:', rules[0].meta);
-        if (rules[0].meta && rules[0].meta.languages) {
-          console.log('Languages in meta:', rules[0].meta.languages);
+      if (newRules && newRules.length > 0) {
+        console.log('First rule structure:', newRules[0]);
+        console.log('Languages in first rule:', newRules[0].languages);
+        console.log('Meta object in first rule:', newRules[0].meta);
+        if (newRules[0].meta && newRules[0].meta.languages) {
+          console.log('Languages in meta:', newRules[0].meta.languages);
         }
       }
       
       // Don't filter out incomplete rules - just ensure they have an ID
-      let validRules = rules.filter((rule: any) => rule.id);
+      let validRules = newRules.filter((rule: any) => rule.id);
       
       // Apply client-side filtering for languages
       if (languageFilter.length > 0) {
@@ -619,8 +645,8 @@ const classifyVulns = (vulns: Vulnerability[]) => {
         });
       }
       
-      if (validRules.length < rules.length) {
-        console.warn(`Filtered out ${rules.length - validRules.length} rules with missing IDs or that didn't match filters`);
+      if (validRules.length < newRules.length) {
+        console.warn(`Filtered out ${newRules.length - validRules.length} rules with missing IDs or that didn't match filters`);
       }
       
       // Update state based on whether we're appending or replacing
@@ -630,8 +656,6 @@ const classifyVulns = (vulns: Vulnerability[]) => {
         setSemgrepRules(validRules);
       }
       
-      setTotalRules(total);
-      setHasMore(has_more);
       setOffset(newOffset);
     } catch (error) {
       console.error('Error fetching semgrep rules:', error);
@@ -669,7 +693,300 @@ const classifyVulns = (vulns: Vulnerability[]) => {
     }
   }, [hasMore, loadingRules, debouncedSearchQuery, offset, fetchSemgrepRules]);
 
-  // State variables moved up to fix reference error
+  // Add function to combine and store scan results
+  const combineAndStoreResults = async (semgrepData: any, shiftleftData: any, codeqlData: any) => {
+    try {
+      // Extract vulnerabilities from each scan
+      const semgrepVulns = semgrepData?.vulnerabilities || [];
+      const shiftleftVulns = shiftleftData?.vulnerabilities || [];
+      const codeqlVulns = codeqlData?.vulnerabilities || [];
+      
+      // Create a set to track unique vulnerabilities (prevent duplicates)
+      // We'll use a simple approach to determine duplicates: combining check_id and path
+      const uniqueVulnsMap = new Map();
+      
+      // Helper function to add vulnerabilities to our map with source tracking and enhanced details
+      const addVulnsToMap = (vulns: any[], source: string) => {
+        vulns.forEach(vuln => {
+          // Generate a key for deduplication
+          const key = `${vuln.check_id}:${vuln.path}:${vuln.start?.line || 0}`;
+          
+          // If we haven't seen this vulnerability or the current one has higher severity, add it
+          if (!uniqueVulnsMap.has(key) || 
+             (uniqueVulnsMap.get(key).severity === 'info' && vuln.severity !== 'info') ||
+             (uniqueVulnsMap.get(key).severity === 'warning' && vuln.severity === 'error')) {
+            
+            // Add enhanced vulnerability details
+            const enhancedVuln = { ...vuln, source };
+            
+            // Generate a description if not present
+            if (!enhancedVuln.extra.description) {
+              enhancedVuln.extra.description = generateDescription(enhancedVuln, source);
+            }
+            
+            // Add OWASP category mapping if available
+            if (!enhancedVuln.extra.owasp_category) {
+              const owaspMapping = mapToOwasp(enhancedVuln.check_id, enhancedVuln.extra?.message || '');
+              if (owaspMapping) {
+                enhancedVuln.extra.owasp_category = owaspMapping;
+              }
+            }
+            
+            // Add CWE mapping if available
+            if (!enhancedVuln.extra.cwe_id) {
+              const cweMapping = mapToCwe(enhancedVuln.check_id, enhancedVuln.extra?.message || '');
+              if (cweMapping) {
+                enhancedVuln.extra.cwe_id = cweMapping;
+              }
+            }
+            
+            // Always generate and set remediation regardless of whether one exists
+            enhancedVuln.extra.remediation = generateRemediation(enhancedVuln, source);
+            
+            // Add references if not present
+            if (!enhancedVuln.extra.references) {
+              enhancedVuln.extra.references = generateReferences(enhancedVuln, source);
+            }
+            
+            uniqueVulnsMap.set(key, enhancedVuln);
+          }
+        });
+      };
+      
+      // Add all vulnerabilities to our map
+      addVulnsToMap(semgrepVulns, 'Semgrep');
+      addVulnsToMap(shiftleftVulns, 'ShiftLeft');
+      addVulnsToMap(codeqlVulns, 'CodeQL');
+      
+      // Convert back to array
+      const combinedVulns = Array.from(uniqueVulnsMap.values());
+      
+      // Calculate average security score
+      const semgrepScore = semgrepData?.security_score || 0;
+      const shiftleftScore = shiftleftData?.security_score || 0;
+      const codeqlScore = codeqlData?.security_score || 0;
+      
+      // Only include scores that exist (non-zero)
+      const scores = [
+        semgrepScore > 0 ? semgrepScore : null,
+        shiftleftScore > 0 ? shiftleftScore : null,
+        codeqlScore > 0 ? codeqlScore : null
+      ].filter(score => score !== null);
+      
+      const averageScore = scores.length > 0 
+        ? scores.reduce((sum, score) => sum + (score || 0), 0) / scores.length 
+        : 0;
+      
+      // Count severities in combined results
+      const severityCount = {
+        ERROR: combinedVulns.filter(v => v.severity === 'error' || v.extra?.severity === 'ERROR').length,
+        WARNING: combinedVulns.filter(v => v.severity === 'warning' || v.extra?.severity === 'WARNING').length,
+        INFO: combinedVulns.filter(v => v.severity === 'info' || v.extra?.severity === 'INFO').length
+      };
+      
+      // Create the combined results object
+      const combined = {
+        file_name: uploadedFile?.name || '',
+        security_score: averageScore,
+        vulnerabilities: combinedVulns,
+        severity_count: severityCount,
+        total_vulnerabilities: combinedVulns.length,
+        scan_timestamp: new Date().toISOString(),
+        scan_metadata: {
+          scan_type: 'Combined SAST',
+          scan_sources: ['Semgrep', 'ShiftLeft', 'CodeQL'],
+          individual_scores: {
+            semgrep: semgrepScore,
+            shiftleft: shiftleftScore,
+            codeql: codeqlScore
+          }
+        }
+      };
+      
+      // Store combined results in state
+      setCombinedResults(combined);
+      setScanResults(combined);
+      
+      // Store in database by sending to API
+      try {
+        const response = await fetch('http://localhost:8000/api/v1/scan/combined-results', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(combined),
+        });
+        
+        if (!response.ok) {
+          console.error('Failed to store combined results in database');
+        }
+      } catch (error) {
+        console.error('Error storing combined results:', error);
+      }
+    } catch (error) {
+      console.error('Error combining scan results:', error);
+      // Use the CodeQL results as fallback if combining fails
+      setScanResults(codeqlData);
+    }
+  };
+  
+  // Helper functions for generating additional vulnerability details
+  const generateDescription = (vuln: any, source: string): string => {
+    const checkId = vuln.check_id || '';
+    const message = vuln.extra?.message || vuln.message || '';
+    
+    // Base description from the message
+    let description = message;
+    
+    // Add more context based on vulnerability type
+    if (message.toLowerCase().includes('sql injection')) {
+      description += ` SQL injection vulnerabilities allow attackers to modify database queries, potentially leading to unauthorized data access, data manipulation, or system compromise. This could affect business operations and expose sensitive customer or company data.`;
+    } else if (message.toLowerCase().includes('xss') || checkId.toLowerCase().includes('xss')) {
+      description += ` Cross-site scripting (XSS) allows attackers to inject malicious scripts into web pages viewed by users. This could lead to session hijacking, credential theft, or malicious actions performed on behalf of the user.`;
+    } else if (message.toLowerCase().includes('command injection') || checkId.toLowerCase().includes('command-injection')) {
+      description += ` Command injection vulnerabilities can allow attackers to execute arbitrary system commands on the host operating system, potentially leading to complete system compromise, data theft, or service disruption.`;
+    } else if (message.toLowerCase().includes('path traversal') || checkId.toLowerCase().includes('path-traversal')) {
+      description += ` Path traversal vulnerabilities allow attackers to access files and directories outside of the intended directory, potentially exposing sensitive configuration files, credentials, or system files.`;
+    } else if (message.toLowerCase().includes('ssrf') || checkId.toLowerCase().includes('ssrf')) {
+      description += ` Server-Side Request Forgery (SSRF) allows attackers to induce the server to make requests to internal resources, potentially bypassing network controls and accessing internal services.`;
+    }
+    
+    if (source === 'Semgrep') {
+      description += ` This vulnerability was detected by static pattern matching in your code.`;
+    } else if (source === 'CodeQL') {
+      description += ` This vulnerability was identified through semantic code analysis.`;
+    } else if (source === 'ShiftLeft') {
+      description += ` This vulnerability was detected through program flow analysis.`;
+    }
+    
+    return description;
+  };
+  
+  const mapToOwasp = (checkId: string, message: string): string | null => {
+    // Map the vulnerability to OWASP Top 10
+    const lowerCheckId = checkId.toLowerCase();
+    const lowerMessage = message.toLowerCase();
+    
+    if (lowerMessage.includes('injection') || lowerCheckId.includes('injection') || 
+        lowerMessage.includes('sql') || lowerCheckId.includes('sql')) {
+      return 'A1:2021-Injection';
+    } else if (lowerMessage.includes('auth') || lowerCheckId.includes('auth') || 
+               lowerMessage.includes('password') || lowerCheckId.includes('password')) {
+      return 'A2:2021-Broken Authentication';
+    } else if (lowerMessage.includes('xss') || lowerCheckId.includes('xss')) {
+      return 'A3:2021-Cross-Site Scripting';
+    } else if (lowerMessage.includes('access control') || lowerCheckId.includes('access-control')) {
+      return 'A5:2021-Broken Access Control';
+    } else if (lowerMessage.includes('serialize') || lowerCheckId.includes('serialize')) {
+      return 'A8:2021-Insecure Deserialization';
+    } else if (lowerMessage.includes('log') || lowerCheckId.includes('log')) {
+      return 'A9:2021-Insufficient Logging & Monitoring';
+    }
+    
+    return null;
+  };
+  
+  const mapToCwe = (checkId: string, message: string): string | null => {
+    // Map the vulnerability to CWE ID
+    const lowerCheckId = checkId.toLowerCase();
+    const lowerMessage = message.toLowerCase();
+    
+    if (lowerMessage.includes('sql injection') || lowerCheckId.includes('sql-injection')) {
+      return 'CWE-89';
+    } else if (lowerMessage.includes('xss') || lowerCheckId.includes('xss')) {
+      return 'CWE-79';
+    } else if (lowerMessage.includes('command injection') || lowerCheckId.includes('command-injection')) {
+      return 'CWE-78';
+    } else if (lowerMessage.includes('path traversal') || lowerCheckId.includes('path-traversal')) {
+      return 'CWE-22';
+    } else if (lowerMessage.includes('ssrf') || lowerCheckId.includes('ssrf')) {
+      return 'CWE-918';
+    } else if (lowerMessage.includes('hard-coded') || lowerCheckId.includes('hardcoded')) {
+      return 'CWE-798';
+    }
+    
+    return null;
+  };
+  
+  const generateRemediation = (vuln: any, source: string): string => {
+    const checkId = vuln.check_id || '';
+    const message = vuln.extra?.message || vuln.message || '';
+    const lowerMessage = message.toLowerCase();
+    const lowerCheckId = checkId.toLowerCase();
+    
+    // Generate remediation guidance based on vulnerability type
+    if (lowerMessage.includes('sql injection') || lowerCheckId.includes('sql-injection')) {
+      return `Use parameterized queries or prepared statements instead of string concatenation for SQL queries. If using an ORM, ensure you're not using raw query methods with user input. Always validate and sanitize user input before using it in database operations.`;
+    } else if (lowerMessage.includes('xss') || lowerCheckId.includes('xss')) {
+      return `Sanitize and validate all user input before displaying it in HTML context. Use context-appropriate encoding (HTML, JavaScript, CSS, URL) when displaying user-controlled data. Consider using a Content Security Policy (CSP) as an additional layer of defense.`;
+    } else if (lowerMessage.includes('command injection') || lowerCheckId.includes('command-injection')) {
+      return `Avoid using shell commands with user input whenever possible. If necessary, use allowlists for permitted commands and arguments, and properly escape all user-provided inputs. Consider using language-specific APIs for the functionality instead of shell commands.`;
+    } else if (lowerMessage.includes('path traversal') || lowerCheckId.includes('path-traversal')) {
+      return `Validate and sanitize file paths provided by users. Use absolute paths with a whitelist of allowed directories. Normalize paths to remove ".." sequences before validation. Consider using a library designed for safe file operations.`;
+    } else if (lowerMessage.includes('hardcoded') || lowerCheckId.includes('hardcoded')) {
+      return `Remove hardcoded credentials from the code. Use a secure configuration management system or environment variables to store sensitive values. Consider using a secrets management service for production deployments.`;
+    } else if (lowerMessage.includes('ssrf') || lowerCheckId.includes('ssrf')) {
+      return `Implement strict URL validation using a whitelist of allowed domains, protocols, and ports. Avoid using user-controlled input in URL-fetching functions. Consider using a dedicated SSRF prevention library.`;
+    } else if (lowerMessage.includes('deserialization') || lowerCheckId.includes('deserial')) {
+      return `Never deserialize untrusted data. If deserialization is necessary, use safer alternatives like JSON or implement integrity checks. Run deserialization code with minimal privileges and in a sandbox if possible.`;
+    } else if (lowerMessage.includes('crypto') || lowerMessage.includes('encrypt') || lowerMessage.includes('cipher')) {
+      return `Use established cryptographic libraries and avoid implementing custom cryptographic algorithms. Ensure you are using strong encryption algorithms with proper key sizes and secure modes of operation.`;
+    } else if (lowerMessage.includes('csrf') || lowerCheckId.includes('csrf')) {
+      return `Implement anti-CSRF tokens in all forms and require them for all state-changing operations. Verify the origin of requests using strict same-origin policies. Use SameSite cookie attributes.`;
+    } else if (lowerMessage.includes('auth') || lowerMessage.includes('password') || lowerCheckId.includes('auth')) { 
+      return `Implement strong password policies, multi-factor authentication, and rate limiting for authentication attempts. Use secure, standard authentication frameworks instead of custom implementations.`;
+    } else if (lowerMessage.includes('cors') || lowerCheckId.includes('cors')) {
+      return `Restrict cross-origin resource sharing (CORS) to trusted domains only. Avoid using wildcard origins in production. Be careful with Access-Control-Allow-Credentials and ensure it's only used with specific origins.`;
+    }
+    
+    // Determine source-specific recommendations
+    if (source === 'Semgrep' && lowerMessage.includes('pattern')) {
+      return `This pattern match indicates a potential security issue. Review the code to ensure it follows secure coding patterns and implement proper validation and sanitization of all inputs.`;
+    } else if (source === 'CodeQL' && lowerMessage.includes('taint')) {
+      return `This taint flow analysis indicates that untrusted data may reach a sensitive sink. Implement proper validation, sanitization, or encoding at the appropriate points in the data flow path.`;
+    } else if (source === 'ShiftLeft' && lowerMessage.includes('leak')) {
+      return `This analysis indicates a potential information leak. Ensure sensitive data is properly encrypted during transmission and storage, and implement appropriate access controls.`;
+    }
+    
+    // Default remediation based on the severity
+    if (vuln.severity === 'error' || vuln.extra?.severity === 'ERROR') {
+      return `This is a high-severity issue that requires immediate attention. Review the code for security issues related to the reported vulnerability and implement proper input validation, output encoding, and strong access controls.`;
+    } else if (vuln.severity === 'warning' || vuln.extra?.severity === 'WARNING') {
+      return `This is a medium-severity issue that should be addressed. Implement appropriate security controls including data validation and proper error handling to mitigate this risk.`;
+    }
+    
+    // Generic fallback
+    return `Review the code for security issues related to the reported vulnerability. Implement proper input validation, output encoding, and access controls appropriate for this specific type of vulnerability.`;
+  };
+  
+  const generateReferences = (vuln: any, source: string): string[] => {
+    const checkId = vuln.check_id || '';
+    const message = vuln.extra?.message || vuln.message || '';
+    const lowerMessage = message.toLowerCase();
+    const lowerCheckId = checkId.toLowerCase();
+    const references = [];
+    
+    // Add OWASP references based on vulnerability type - we'll skip the general reference
+    if (lowerMessage.includes('sql injection') || lowerCheckId.includes('sql-injection')) {
+      references.push('https://owasp.org/www-community/attacks/SQL_Injection');
+      references.push('https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html');
+    } else if (lowerMessage.includes('xss') || lowerCheckId.includes('xss')) {
+      references.push('https://owasp.org/www-community/attacks/xss/');
+      references.push('https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html');
+    } else if (lowerMessage.includes('command injection') || lowerCheckId.includes('command-injection')) {
+      references.push('https://owasp.org/www-community/attacks/Command_Injection');
+    } else if (lowerMessage.includes('path traversal') || lowerCheckId.includes('path-traversal')) {
+      references.push('https://owasp.org/www-community/attacks/Path_Traversal');
+    } else if (lowerMessage.includes('ssrf') || lowerCheckId.includes('ssrf')) {
+      references.push('https://owasp.org/www-community/attacks/Server_Side_Request_Forgery');
+      references.push('https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html');
+    }
+    
+    // No longer adding general secure coding references
+    // references.push('https://owasp.org/www-project-top-ten/');
+    
+    return references;
+  };
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -732,6 +1049,7 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                 )}
                 
                 <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2 }}>
+                  {/* Individual scan buttons are now hidden 
                   <Button 
                     variant="contained" 
                     color="primary" 
@@ -792,23 +1110,58 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                       </Box>
                     ) : 'Run CodeQL'}
                   </Button>
+                  */}
+                  
+                  {/* Only show the "Run All SAST" button with enhanced styling */}
                   <Button
                     variant="contained"
-                    color="info"
                     size="large"
                     onClick={runAllScanners}
                     disabled={isAnyScanLoading}
                     sx={{
                       background: 'linear-gradient(45deg, #2196F3 30%, #9c27b0 70%, #4CAF50 100%)',
+                      fontSize: '1.1rem',
+                      fontWeight: 'bold',
+                      padding: '12px 24px',
                       ...(runningAllSast ? processingButtonStyle : {})
                     }}
                   >
-                    {runningAllSast ? (
+                    {loadingSastUpload ? (
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <CircularProgress size={20} color="inherit" />
-                        Running All Scanners...
+                        Scanning File for Semgrep...
                       </Box>
-                    ) : 'Run All SAST'}
+                    ) : loadingSastProcessing ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <CircularProgress size={20} color="inherit" />
+                        Running Semgrep Analysis...
+                      </Box>
+                    ) : loadingShiftLeftUpload ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <CircularProgress size={20} color="inherit" />
+                        Scanning File for ShiftLeft...
+                      </Box>
+                    ) : loadingShiftLeftProcessing ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <CircularProgress size={20} color="inherit" />
+                        Running ShiftLeft Analysis...
+                      </Box>
+                    ) : loadingCodeQLUpload ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <CircularProgress size={20} color="inherit" />
+                        Scanning File for CodeQL...
+                      </Box>
+                    ) : loadingCodeQLProcessing ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <CircularProgress size={20} color="inherit" />
+                        Running CodeQL Analysis...
+                      </Box>
+                    ) : (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <SecurityIcon />
+                        Run All SAST Scans
+                      </Box>
+                    )}
                   </Button>
                 </Box>
               </Box>
@@ -818,15 +1171,25 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                 {error}
               </Alert>
             )}
-            {scanResults && !isAnyScanLoading && (
+            {!isAnyScanLoading && combinedResults && !resultsButtonClicked && (
               <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
                 <Button
                   variant="contained"
                   color="primary"
-                  onClick={() => setDialogOpen(true)}
+                  onClick={() => {
+                    setDialogOpen(true);
+                    setResultsButtonClicked(true);
+                  }}
                   startIcon={<VisibilityIcon />}
+                  size="large"
+                  sx={{ 
+                    py: 1, 
+                    px: 2, 
+                    fontSize: '1rem',
+                    background: 'linear-gradient(45deg, #2196F3 30%, #4CAF50 90%)'
+                  }}
                 >
-                  View Results
+                  View Security Analysis Results
                 </Button>
               </Box>
             )}
@@ -846,7 +1209,21 @@ const classifyVulns = (vulns: Vulnerability[]) => {
       >
         <DialogTitle>
           <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Typography variant="h6">{scanResults?.scan_metadata?.scan_type === 'CodeQL' ? 'CodeQL Scan Results' : 'Scan Results'}</Typography>
+            <Typography variant="h6">
+              {combinedResults ? 'Combined Security Analysis Results' : 
+               scanResults?.scan_metadata?.scan_type === 'CodeQL' ? 'CodeQL Scan Results' : 
+               scanResults?.scan_metadata?.scan_type === 'ShiftLeft' ? 'ShiftLeft Scan Results' : 
+               'Security Scan Results'}
+              {combinedResults && (
+                <Typography 
+                  variant="subtitle1" 
+                  component="span" 
+                  sx={{ ml: 1, fontWeight: 'normal', color: 'text.secondary' }}
+                >
+                  (Semgrep, ShiftLeft, CodeQL)
+                </Typography>
+              )}
+            </Typography>
             <IconButton onClick={handleCloseDialog} size="small">
               <CloseIcon />
             </IconButton>
@@ -856,14 +1233,52 @@ const classifyVulns = (vulns: Vulnerability[]) => {
           {isAnyScanLoading ? (
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', p: 3, gap: 2 }}>
               <CircularProgress />
-              <Typography variant="body1">
+              <Typography variant="body1" sx={{ textAlign: 'center' }}>
                 {loadingSastUpload ? 'Uploading file for Semgrep scan...' : 
                  loadingSastProcessing ? 'Running Semgrep security analysis...' : 
+                 loadingShiftLeftUpload ? 'Uploading file for ShiftLeft scan...' : 
+                 loadingShiftLeftProcessing ? 'Running ShiftLeft security analysis...' : 
                  loadingCodeQLUpload ? 'Uploading file for CodeQL scan...' : 
                  loadingCodeQLProcessing ? 'Running CodeQL security analysis...' : 
-                 loadingShiftLeftUpload ? 'Uploading file for ShiftLeft scan...' : 
-                 'Running ShiftLeft security analysis...'}
+                 'Running SAST security analysis...'}
               </Typography>
+              
+              {runningAllSast && (
+                <Box sx={{ width: '100%', mt: 2 }}>
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    Overall scan progress:
+                  </Typography>
+                  
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Box sx={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {loadingSastProcessing || !loadingSastUpload && !loadingSastProcessing ? <CheckCircleIcon color="success" fontSize="small" /> : <CircularProgress size={16} />}
+                      </Box>
+                      <Typography variant="body2">Semgrep Analysis</Typography>
+                    </Box>
+                    
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Box sx={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {loadingSastProcessing && !loadingShiftLeftUpload && !loadingShiftLeftProcessing ? 
+                          <CircularProgress size={16} /> : 
+                          loadingShiftLeftUpload || loadingShiftLeftProcessing || loadingCodeQLUpload || loadingCodeQLProcessing ? 
+                          <CheckCircleIcon color="success" fontSize="small" /> : null}
+                      </Box>
+                      <Typography variant="body2">ShiftLeft Analysis</Typography>
+                    </Box>
+                    
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Box sx={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {(loadingShiftLeftProcessing && !loadingCodeQLUpload && !loadingCodeQLProcessing) ? 
+                          <CircularProgress size={16} /> : 
+                          loadingCodeQLUpload || loadingCodeQLProcessing ? 
+                          <CheckCircleIcon color="success" fontSize="small" /> : null}
+                      </Box>
+                      <Typography variant="body2">CodeQL Analysis</Typography>
+                    </Box>
+                  </Box>
+                </Box>
+              )}
             </Box>
           ) : scanResults && (
             <ScanResults results={scanResults} />
