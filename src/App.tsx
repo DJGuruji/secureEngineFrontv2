@@ -772,8 +772,30 @@ const classifyVulns = (vulns: Vulnerability[]) => {
              (uniqueVulnsMap.get(key).severity === 'info' && vuln.severity !== 'info') ||
              (uniqueVulnsMap.get(key).severity === 'warning' && vuln.severity === 'error')) {
             
-            // Add enhanced vulnerability details
-            const enhancedVuln = { ...vuln, source };
+            // Add enhanced vulnerability details - make sure it's a proper object with all required fields
+            const enhancedVuln = { 
+              ...vuln,
+              source,
+              // Ensure these critical fields exist for backend processing
+              check_id: vuln.check_id || `${source}-${Math.random().toString(36).substring(2)}`,
+              path: vuln.path || "Unknown",
+              start: vuln.start || { line: 0 },
+              end: vuln.end || { line: 0 },
+              extra: vuln.extra || {}
+            };
+            
+            // Make sure extra object exists and has required fields
+            if (!enhancedVuln.extra) {
+              enhancedVuln.extra = {};
+            }
+            
+            // Ensure message exists in extra
+            if (!enhancedVuln.extra.message) {
+              enhancedVuln.extra.message = vuln.message || 'Unknown vulnerability';
+            }
+            
+            // Ensure severity exists and is normalized
+            enhancedVuln.extra.severity = (enhancedVuln.extra.severity || vuln.severity || 'INFO').toUpperCase();
             
             // Generate a description if not present
             if (!enhancedVuln.extra.description) {
@@ -804,7 +826,8 @@ const classifyVulns = (vulns: Vulnerability[]) => {
             //   enhancedVuln.extra.references = generateReferences(enhancedVuln, source);
             // }
             
-            // uniqueVulnsMap.set(key, enhancedVuln);
+            // Add the vulnerability to the map
+            uniqueVulnsMap.set(key, enhancedVuln);
           }
         });
       };
@@ -865,16 +888,54 @@ const classifyVulns = (vulns: Vulnerability[]) => {
       
       // Store in database by sending to API
       try {
+        // Log the combined object for debugging
+        console.log('Sending combined results to API:', combined);
+        console.log('Vulnerabilities being sent:', combined.vulnerabilities);
+        console.log('Vulnerabilities length:', combined.vulnerabilities.length);
+        
+        // Make sure all vulnerabilities have the correct structure
+        const sanitizedVulnerabilities = combined.vulnerabilities.map(vuln => {
+          // Ensure all required fields are present and valid
+          return {
+            check_id: vuln.check_id || `generic-${Math.random().toString(36).substring(2)}`,
+            path: vuln.path || "Unknown",
+            start: vuln.start || { line: 0 },
+            end: vuln.end || { line: 0 },
+            extra: {
+              message: vuln.extra?.message || vuln.message || "Unknown vulnerability",
+              severity: (vuln.extra?.severity || vuln.severity || "INFO").toUpperCase(),
+              description: vuln.extra?.description || "",
+              remediation: vuln.extra?.remediation || "",
+              ...(vuln.extra || {})
+            },
+            source: vuln.source || "Combined",
+            severity: (vuln.severity || "INFO").toUpperCase()
+          };
+        });
+        
+        // Create a sanitized copy of the combined results
+        const sanitizedCombined = {
+          ...combined,
+          vulnerabilities: sanitizedVulnerabilities
+        };
+        
+        console.log('Sanitized vulnerabilities being sent:', sanitizedCombined.vulnerabilities);
+        
         const response = await fetch('http://localhost:8000/api/v1/scan/combined-results', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(combined),
+          body: JSON.stringify(sanitizedCombined),
         });
         
         if (!response.ok) {
           console.error('Failed to store combined results in database');
+          const errorText = await response.text();
+          console.error('Error response:', errorText);
+        } else {
+          const responseData = await response.json();
+          console.log('Successfully stored combined results, response:', responseData);
         }
       } catch (error) {
         console.error('Error storing combined results:', error);
