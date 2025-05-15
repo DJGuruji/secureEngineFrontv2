@@ -48,6 +48,8 @@ import LaunchIcon from '@mui/icons-material/Launch';
 import SemgrepRuleSelector from './components/SemgrepRuleSelector';
 import RuleDetails from './components/RuleDetails';
 import RuleFilters from './components/RuleFilters';
+import VulnerabilityReport from './components/VulnerabilityReport';
+import CreditsInfo from './components/CreditsInfo';
 
 interface Vulnerability {
   check_id: string;
@@ -352,21 +354,24 @@ function App() {
       // Reset states at the start
       setError(null);
       setScanStarted(true);
-      setResultsButtonClicked(false);
-      
-      // Set loading state
       setLoadingAiScan(true);
       
       const formData = new FormData();
       formData.append('file', uploadedFile);
-  
-      // Upload file to AI scan endpoint
+
+      // Upload file for AI analysis
       const response = await fetch('http://localhost:8000/api/v1/scan/ai-scan', {
         method: 'POST',
         body: formData,
       });
       
       if (!response.ok) {
+        // Check for credit-specific error (402 Payment Required)
+        if (response.status === 402) {
+          const errorData = await response.json();
+          throw new Error(errorData.detail || 'Insufficient credits for AI scan.');
+        }
+        
         const errorData = await response.json();
         throw new Error(errorData.detail || 'Failed to scan file with AI');
       }
@@ -375,7 +380,7 @@ function App() {
       
       // Make sure the scan type is correctly set for the UI
       if (data.scan_metadata) {
-        data.scan_metadata.scan_type = 'AI Scan';
+        data.scan_metadata.scan_type = 'AI';
       }
       
       // Store AI scan results
@@ -383,8 +388,11 @@ function App() {
       setScanResults(data);
       setDialogOpen(true);
       
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred during AI scan');
+      // Refresh credit info after scan
+      setCreditsRefreshTrigger(prev => prev + 1);
+    } catch (error: any) {
+      console.error('Error during AI scan:', error);
+      setError(error.message);
     } finally {
       setLoadingAiScan(false);
     }
@@ -464,6 +472,8 @@ const classifyVulns = (vulns: Vulnerability[]) => {
   const [aiScanResults, setAiScanResults] = useState<any>(null);
   // Add state to track if the results button has been clicked
   const [resultsButtonClicked, setResultsButtonClicked] = useState<boolean>(false);
+  // Add state for credit info refresh trigger
+  const [creditsRefreshTrigger, setCreditsRefreshTrigger] = useState<number>(0);
   
   // Add a function to run all scanners
   const runAllScanners = async () => {
@@ -1139,6 +1149,8 @@ const classifyVulns = (vulns: Vulnerability[]) => {
           </Tabs>
           
           <TabPanel value={tabValue} index={0}>
+            <CreditsInfo key={creditsRefreshTrigger} onUpdate={() => setCreditsRefreshTrigger(prev => prev + 1)} />
+            
             <FileUpload
               getRootProps={getRootProps}
               getInputProps={getInputProps}
