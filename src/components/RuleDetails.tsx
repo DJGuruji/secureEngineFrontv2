@@ -3,6 +3,7 @@ import {
   Box,
   Button,
   Chip,
+  CircularProgress,
   Grid,
   IconButton,
   Paper,
@@ -14,10 +15,34 @@ import LaunchIcon from '@mui/icons-material/Launch';
 
 interface RuleDetailsProps {
   selectedRule: any;
+  isLoading?: boolean;
 }
 
-const RuleDetails: React.FC<RuleDetailsProps> = ({ selectedRule }) => {
+const RuleDetails: React.FC<RuleDetailsProps> = ({ selectedRule, isLoading = false }) => {
   const theme = useTheme();
+
+  if (isLoading) {
+    return (
+      <Paper 
+        elevation={2} 
+        sx={{ 
+          mt: 3, 
+          p: 4,
+          borderRadius: 2,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: '200px'
+        }}
+      >
+        <CircularProgress size={40} />
+        <Typography variant="h6" sx={{ mt: 2 }}>
+          Loading rule details...
+        </Typography>
+      </Paper>
+    );
+  }
 
   if (!selectedRule) return null;
 
@@ -76,12 +101,7 @@ const RuleDetails: React.FC<RuleDetailsProps> = ({ selectedRule }) => {
     return [];
   };
 
-  // Get rule message correctly
-  const getMessage = () => {
-    return selectedRule.message || 
-           selectedRule.definition?.rules?.[0]?.message || 
-           "No message available";
-  };
+ 
 
   // Get rule severity correctly with debug output
   const getSeverity = () => {
@@ -281,11 +301,16 @@ const RuleDetails: React.FC<RuleDetailsProps> = ({ selectedRule }) => {
       >
         <Box>
           <Typography variant="h6" color="">
-            Rule Name :{getRuleName()}
+            Rule Name: {getRuleName()}
           </Typography>
           <Typography variant="body2" color="text.secondary">
             ID: <code>{selectedRule.id}</code>
           </Typography>
+          {selectedRule.path && (
+            <Typography variant="body2" color="text.secondary">
+              Path: <code>{selectedRule.path}</code>
+            </Typography>
+          )}
         </Box>
         
         <Chip 
@@ -364,28 +389,7 @@ const RuleDetails: React.FC<RuleDetailsProps> = ({ selectedRule }) => {
             </Box>
           </Grid>
           
-          {/* Message */}
-          {getMessage() && (
-            <Grid item xs={12}>
-              <Box sx={{ 
-                p: 2, 
-                borderRadius: 1, 
-                bgcolor: theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.02)',
-              }}>
-                <Typography variant="subtitle1" color="primary" gutterBottom>
-                  Message
-                </Typography>
-                <Box sx={{ 
-                  p: 2, 
-                  borderRadius: 1, 
-                  bgcolor: theme.palette.mode === 'dark' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(0, 0, 0, 0.05)',
-                  fontFamily: 'monospace'
-                }}>
-                  {getMessage()}
-                </Box>
-              </Box>
-            </Grid>
-          )}
+       
         </Grid>
       </Box>
       

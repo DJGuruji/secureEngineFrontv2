@@ -547,9 +547,11 @@ const classifyVulns = (vulns: Vulnerability[]) => {
   const [severityFilter, setSeverityFilter] = useState('all');
   const [languageFilter, setLanguageFilter] = useState<string[]>([]);
   const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
+  const [scanTypeFilter, setScanTypeFilter] = useState<string[]>([]);
   // Add state to control dropdown open/close
   const [languageDropdownOpen, setLanguageDropdownOpen] = useState(false);
   const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
+  const [scanTypeDropdownOpen, setScanTypeDropdownOpen] = useState(false);
   
   const autocompleteRef = useRef<HTMLDivElement>(null);
   const listboxRef = useRef<HTMLUListElement>(null);
@@ -572,6 +574,12 @@ const classifyVulns = (vulns: Vulnerability[]) => {
       // Add severity filter
       if (severityFilter !== 'all') {
         params.severity = severityFilter;
+      }
+      
+      // Add rule_type filter if there's only one selected
+      if (scanTypeFilter.length === 1) {
+        params.rule_type = scanTypeFilter[0];
+        console.log(`Sending rule_type filter to backend: ${scanTypeFilter[0]}`);
       }
       
       // Add language filter - handled client-side
@@ -645,6 +653,54 @@ const classifyVulns = (vulns: Vulnerability[]) => {
         });
       }
       
+      // Apply client-side filtering for scan types
+      if (scanTypeFilter.length > 0) {
+        console.log(`Filtering by rule types: ${scanTypeFilter.join(', ')}`);
+        console.log(`Before filtering: ${validRules.length} rules`);
+        
+        validRules = validRules.filter((rule: any) => {
+          // Check the rule_type field directly at the root level
+          if (rule.rule_type) {
+            const ruleType = rule.rule_type.toLowerCase();
+            console.log(`Rule ${rule.id} has rule_type: ${ruleType}`);
+            return scanTypeFilter.some(type => 
+              ruleType === type.toLowerCase());
+          }
+          
+          // Fallback checks in other locations
+          // Check in rule.meta.metadata.type field if it exists
+          if (rule.meta && rule.meta.metadata && rule.meta.metadata.type) {
+            const ruleType = rule.meta.metadata.type.toLowerCase();
+            console.log(`Rule ${rule.id} has meta.metadata.type: ${ruleType}`);
+            return scanTypeFilter.some(type => 
+              ruleType === type.toLowerCase());
+          }
+          
+          // Check in rule.metadata.type field if it exists
+          if (rule.metadata && rule.metadata.type) {
+            const ruleType = rule.metadata.type.toLowerCase();
+            console.log(`Rule ${rule.id} has metadata.type: ${ruleType}`);
+            return scanTypeFilter.some(type => 
+              ruleType === type.toLowerCase());
+          }
+          
+          // Check in rule.id field for common scan type identifiers
+          if (rule.id) {
+            const ruleId = rule.id.toLowerCase();
+            const matchesType = scanTypeFilter.some(type => 
+              ruleId.includes(type.toLowerCase()));
+            if (matchesType) {
+              console.log(`Rule ${rule.id} ID contains rule type`);
+            }
+            return matchesType;
+          }
+          
+          return false;
+        });
+        
+        console.log(`After filtering: ${validRules.length} rules`);
+      }
+      
       if (validRules.length < newRules.length) {
         console.warn(`Filtered out ${newRules.length - validRules.length} rules with missing IDs or that didn't match filters`);
       }
@@ -662,7 +718,7 @@ const classifyVulns = (vulns: Vulnerability[]) => {
     } finally {
       setLoadingRules(false);
     }
-  }, [severityFilter, languageFilter, categoryFilter]);
+  }, [severityFilter, languageFilter, categoryFilter, scanTypeFilter]);
   
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -680,7 +736,7 @@ const classifyVulns = (vulns: Vulnerability[]) => {
       setHasMore(true);
       fetchSemgrepRules(debouncedSearchQuery, 0, false);
     }
-  }, [ruleType, debouncedSearchQuery, fetchSemgrepRules, severityFilter, languageFilter, categoryFilter]);
+  }, [ruleType, debouncedSearchQuery, fetchSemgrepRules, severityFilter, languageFilter, categoryFilter, scanTypeFilter]);
   
   // Handle infinite scroll
   const handleScroll = useCallback((event: React.UIEvent<HTMLUListElement>) => {
@@ -744,11 +800,11 @@ const classifyVulns = (vulns: Vulnerability[]) => {
             enhancedVuln.extra.remediation = generateRemediation(enhancedVuln, source);
             
             // Add references if not present
-            if (!enhancedVuln.extra.references) {
-              enhancedVuln.extra.references = generateReferences(enhancedVuln, source);
-            }
+            // if (!enhancedVuln.extra.references) {
+            //   enhancedVuln.extra.references = generateReferences(enhancedVuln, source);
+            // }
             
-            uniqueVulnsMap.set(key, enhancedVuln);
+            // uniqueVulnsMap.set(key, enhancedVuln);
           }
         });
       };
@@ -959,34 +1015,7 @@ const classifyVulns = (vulns: Vulnerability[]) => {
     return `Review the code for security issues related to the reported vulnerability. Implement proper input validation, output encoding, and access controls appropriate for this specific type of vulnerability.`;
   };
   
-  const generateReferences = (vuln: any, source: string): string[] => {
-    const checkId = vuln.check_id || '';
-    const message = vuln.extra?.message || vuln.message || '';
-    const lowerMessage = message.toLowerCase();
-    const lowerCheckId = checkId.toLowerCase();
-    const references = [];
-    
-    // Add OWASP references based on vulnerability type - we'll skip the general reference
-    if (lowerMessage.includes('sql injection') || lowerCheckId.includes('sql-injection')) {
-      references.push('https://owasp.org/www-community/attacks/SQL_Injection');
-      references.push('https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html');
-    } else if (lowerMessage.includes('xss') || lowerCheckId.includes('xss')) {
-      references.push('https://owasp.org/www-community/attacks/xss/');
-      references.push('https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html');
-    } else if (lowerMessage.includes('command injection') || lowerCheckId.includes('command-injection')) {
-      references.push('https://owasp.org/www-community/attacks/Command_Injection');
-    } else if (lowerMessage.includes('path traversal') || lowerCheckId.includes('path-traversal')) {
-      references.push('https://owasp.org/www-community/attacks/Path_Traversal');
-    } else if (lowerMessage.includes('ssrf') || lowerCheckId.includes('ssrf')) {
-      references.push('https://owasp.org/www-community/attacks/Server_Side_Request_Forgery');
-      references.push('https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html');
-    }
-    
-    // No longer adding general secure coding references
-    // references.push('https://owasp.org/www-project-top-ten/');
-    
-    return references;
-  };
+
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -1033,6 +1062,10 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                       setLanguageDropdownOpen={setLanguageDropdownOpen}
                       categoryDropdownOpen={categoryDropdownOpen}
                       setCategoryDropdownOpen={setCategoryDropdownOpen}
+                      scanTypeFilter={scanTypeFilter}
+                      setScanTypeFilter={setScanTypeFilter}
+                      scanTypeDropdownOpen={scanTypeDropdownOpen}
+                      setScanTypeDropdownOpen={setScanTypeDropdownOpen}
                     />
                     
                     <SemgrepRuleSelector
@@ -1042,6 +1075,7 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                       severityFilter={severityFilter}
                       languageFilter={languageFilter}
                       categoryFilter={categoryFilter}
+                      scanTypeFilter={scanTypeFilter}
                     />
                     
                     {selectedRule && <RuleDetails selectedRule={selectedRule} />}

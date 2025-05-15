@@ -86,7 +86,7 @@ interface ScanResultsProps {
         description?: string;
         code_snippet?: string;
         remediation?: string;
-        references?: string[];
+     //   references?: string[];
       };
       risk_severity: number;
       exploitability: string;

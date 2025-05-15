@@ -1,52 +1,61 @@
-import React from 'react';
-import {
-  Box,
-  Chip,
-  FormControl,
-  FormControlLabel,
-  FormLabel,
-  Grid,
-  InputLabel,
-  ListSubheader,
-  MenuItem,
-  Paper,
-  Radio,
-  RadioGroup,
-  Select,
-  Typography,
-  useTheme
-} from '@mui/material';
+import React from 'react';import {  Box,  Chip,  FormControl,  FormControlLabel,  FormLabel,  Grid,  InputLabel,  ListSubheader,  MenuItem,  Paper,  Radio,  RadioGroup,  Select,  Typography,  useTheme} from '@mui/material';
 import FilterAltIcon from '@mui/icons-material/FilterAlt';
 import SecurityIcon from '@mui/icons-material/Security';
 import SpeedIcon from '@mui/icons-material/Speed';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 
 interface RuleFiltersProps {
-  severityFilter: string;
-  setSeverityFilter: (value: string) => void;
   languageFilter: string[];
   setLanguageFilter: (value: string[]) => void;
-  categoryFilter: string[];
-  setCategoryFilter: (value: string[]) => void;
   languageDropdownOpen: boolean;
   setLanguageDropdownOpen: (value: boolean) => void;
-  categoryDropdownOpen: boolean;
-  setCategoryDropdownOpen: (value: boolean) => void;
+  scanTypeFilter?: string[];
+  setScanTypeFilter?: (value: string[]) => void;
+  scanTypeDropdownOpen?: boolean;
+  setScanTypeDropdownOpen?: (value: boolean) => void;
+  severityFilter?: string;
+  setSeverityFilter?: (value: string) => void;
+  categoryFilter?: string[];
+  setCategoryFilter?: (value: string[]) => void;
+  categoryDropdownOpen?: boolean;
+  setCategoryDropdownOpen?: (value: boolean) => void;
 }
 
+
+
 const RuleFilters: React.FC<RuleFiltersProps> = ({
-  severityFilter,
-  setSeverityFilter,
   languageFilter,
   setLanguageFilter,
-  categoryFilter,
-  setCategoryFilter,
   languageDropdownOpen,
   setLanguageDropdownOpen,
-  categoryDropdownOpen,
-  setCategoryDropdownOpen
+  scanTypeFilter = [],
+  setScanTypeFilter = () => {},
+  scanTypeDropdownOpen = false,
+  setScanTypeDropdownOpen = () => {},
+  severityFilter,
+  setSeverityFilter,
+  categoryFilter = [],
+  setCategoryFilter = () => {},
+  categoryDropdownOpen = false,
+  setCategoryDropdownOpen = () => {},
 }) => {
   const theme = useTheme();
+
+  
+
+  // Custom styles for menu items
+  const menuItemStyle = {
+    py: 0.25, // Minimal vertical padding
+    px: 2, // Standard horizontal padding
+    my: 0, // No vertical margin
+    minHeight: 'auto', // Override any min-height
+    lineHeight: 1.2, // Reduce line height
+    '&:hover': {
+      backgroundColor: theme.palette.mode === 'dark' 
+        ? 'rgba(255, 255, 255, 0.08)' 
+        : 'rgba(0, 0, 0, 0.04)'
+    }
+  };
 
   return (
     <Paper 
@@ -61,203 +70,36 @@ const RuleFilters: React.FC<RuleFiltersProps> = ({
         border: `1px solid ${theme.palette.divider}`
       }}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2.5 }}>
-        <FilterAltIcon color="primary" sx={{ mr: 1.5 }} />
-        <Typography 
-          variant="h6" 
-          color="primary" 
-          sx={{ 
-            fontWeight: 600, 
-            letterSpacing: 0.5,
-            fontSize: '1.1rem'
-          }}
-        >
-          Rule Filters
-        </Typography>
-      </Box>
+     
     
       <Grid container spacing={3}>
-        {/* Severity Filter */}
-        <Grid item xs={12} sm={4}>
-          <Box 
-            sx={{ 
-              p: 2, 
-              bgcolor: 'background.paper', 
-              borderRadius: 2,
-              boxShadow: theme.shadows[1],
-              height: '100%',
-              display: 'flex',
-              flexDirection: 'column'
-            }}
-          >
-            <FormControl component="fieldset" fullWidth>
-              <FormLabel 
-                component="legend" 
-                sx={{ 
-                  fontWeight: 'bold', 
-                  color: 'primary.main',
-                  mb: 1.5
-                }}
-              >
-                Severity Level
-              </FormLabel>
-              <RadioGroup
-                value={severityFilter}
-                onChange={(e) => setSeverityFilter(e.target.value)}
-                sx={{ 
-                  display: 'flex', 
-                  flexDirection: 'column',
-                  gap: 1
-                }}
-              >
-                <FormControlLabel 
-                  value="all" 
-                  control={
-                    <Radio 
-                      size="small" 
-                      sx={{ 
-                        color: theme.palette.text.secondary,
-                        '&.Mui-checked': {
-                          color: theme.palette.primary.main
-                        }
-                      }}
-                    />
-                  } 
-                  label="All Levels" 
-                  sx={{ 
-                    borderRadius: 1,
-                    py: 0.5,
-                    pl: 0.5,
-                    '&:hover': { 
-                      bgcolor: theme.palette.action.hover 
-                    }
-                  }}
-                />
-                <FormControlLabel 
-                  value="error" 
-                  control={
-                    <Radio 
-                      size="small"
-                      sx={{ 
-                        color: theme.palette.error.main,
-                        '&.Mui-checked': {
-                          color: theme.palette.error.main
-                        }
-                      }} 
-                    />
-                  } 
-                  label={
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <Typography>Error</Typography>
-                      <Chip 
-                        size="small" 
-                        label="High" 
-                        color="error" 
-                        sx={{ ml: 1, height: 20, fontSize: '0.7rem' }} 
-                        variant="outlined"
-                      />
-                    </Box>
-                  }
-                  sx={{ 
-                    borderRadius: 1,
-                    py: 0.5,
-                    pl: 0.5,
-                    '&:hover': { 
-                      bgcolor: theme.palette.action.hover 
-                    }
-                  }}
-                />
-                <FormControlLabel 
-                  value="warning" 
-                  control={
-                    <Radio 
-                      size="small" 
-                      sx={{ 
-                        color: theme.palette.warning.main,
-                        '&.Mui-checked': {
-                          color: theme.palette.warning.main
-                        }
-                      }}
-                    />
-                  } 
-                  label={
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <Typography>Warning</Typography>
-                      <Chip 
-                        size="small" 
-                        label="Medium" 
-                        color="warning" 
-                        sx={{ ml: 1, height: 20, fontSize: '0.7rem' }} 
-                        variant="outlined"
-                      />
-                    </Box>
-                  }
-                  sx={{ 
-                    borderRadius: 1,
-                    py: 0.5,
-                    pl: 0.5,
-                    '&:hover': { 
-                      bgcolor: theme.palette.action.hover 
-                    }
-                  }}
-                />
-                <FormControlLabel 
-                  value="info" 
-                  control={
-                    <Radio 
-                      size="small" 
-                      sx={{ 
-                        color: theme.palette.info.main,
-                        '&.Mui-checked': {
-                          color: theme.palette.info.main
-                        }
-                      }}
-                    />
-                  } 
-                  label={
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <Typography>Info</Typography>
-                      <Chip 
-                        size="small" 
-                        label="Low" 
-                        color="info" 
-                        sx={{ ml: 1, height: 20, fontSize: '0.7rem' }} 
-                        variant="outlined"
-                      />
-                    </Box>
-                  }
-                  sx={{ 
-                    borderRadius: 1,
-                    py: 0.5,
-                    pl: 0.5,
-                    '&:hover': { 
-                      bgcolor: theme.palette.action.hover 
-                    }
-                  }}
-                />
-              </RadioGroup>
-            </FormControl>
-          </Box>
-        </Grid>
+       
         
         {/* Language Filter */}
         <Grid item xs={12} sm={4}>
           <Box 
             sx={{ 
-              p: 2, 
+              p: 3, 
               bgcolor: 'background.paper', 
               borderRadius: 2,
               boxShadow: theme.shadows[1],
               height: '100%',
               display: 'flex',
-              flexDirection: 'column'
+              flexDirection: 'column',
+              position: 'relative', // Add relative positioning
+              zIndex: 1 // Ensure proper stacking context
             }}
           >
             <FormControl fullWidth>
               <InputLabel 
                 sx={{ 
                   fontWeight: 'bold', 
-                  color: 'primary.main' 
+                  color: 'primary.main',
+                  zIndex: 2, // Ensure label is above content
+                  position: 'absolute',
+                  top: '-6px',
+                  backgroundColor: 'background.paper',
+                  padding: '0 4px'
                 }}
               >
                 Programming Languages
@@ -288,28 +130,54 @@ const RuleFilters: React.FC<RuleFiltersProps> = ({
                 size="small"
                 sx={{
                   borderRadius: 1,
+                  height: 'auto',
+                  minHeight: '30px',
                   '& .MuiOutlinedInput-notchedOutline': {
                     borderColor: theme.palette.divider
                   },
                   '&:hover .MuiOutlinedInput-notchedOutline': {
                     borderColor: theme.palette.primary.main
+                  },
+                  // Reduce padding on the select itself
+                  '& .MuiSelect-select': {
+                    padding: '4px 14px',
+                    minHeight: 'initial',
+                    lineHeight: 1.5,
+                    display: 'flex',
+                    alignItems: 'center'
+                  },
+                  // Force correct list position
+                  '& .MuiMenu-paper': {
+                    marginTop: '0px !important'
                   }
                 }}
                 MenuProps={{
-                  // Close on selection
-                  autoFocus: false,
-                  disableAutoFocusItem: true,
-                  disableAutoFocus: true,
+                  // Positioning
+                  anchorOrigin: {
+                    vertical: 'bottom',
+                    horizontal: 'left',
+                  },
+                  transformOrigin: {
+                    vertical: 'top',
+                    horizontal: 'left',
+                  },
+                  // Menu appearance
                   PaperProps: {
-                    sx: {
+                    style: {
                       maxHeight: 300,
-                      borderRadius: 2,
-                      boxShadow: theme.shadows[3]
+                      marginTop: '0px', // No margin at all
+                      borderRadius: 8,
+                      padding: 0
                     }
                   }
                 }}
               >
-                <ListSubheader sx={{ bgcolor: 'background.paper', fontWeight: 'bold', color: 'primary.main' }}>
+                <ListSubheader sx={{ 
+                  bgcolor: 'background.paper', 
+                  fontWeight: 'bold', 
+                  color: 'primary.main',
+                  py: 0.5 // Reduce padding
+                }}>
                   Common Languages
                 </ListSubheader>
                 {['generic', 'python', 'javascript', 'typescript', 'java'].map((lang) => (
@@ -323,12 +191,23 @@ const RuleFilters: React.FC<RuleFiltersProps> = ({
                       }
                       setLanguageDropdownOpen(false);
                     }}
+                    sx={{
+                      ...menuItemStyle,
+                      py: 0.5, // Reduce vertical padding
+                      my: 0, // Remove margins
+                      lineHeight: '1.2' // Decrease line height
+                    }}
                   >
                     {lang.charAt(0).toUpperCase() + lang.slice(1)}
                   </MenuItem>
                 ))}
                 
-                <ListSubheader sx={{ bgcolor: 'background.paper', fontWeight: 'bold', color: 'primary.main' }}>
+                <ListSubheader sx={{ 
+                  bgcolor: 'background.paper', 
+                  fontWeight: 'bold', 
+                  color: 'primary.main',
+                  py: 0.5 // Reduce padding
+                }}>
                   Other Languages
                 </ListSubheader>
                 {['go', 'ruby', 'c', 'cpp'].map((lang) => (
@@ -341,6 +220,12 @@ const RuleFilters: React.FC<RuleFiltersProps> = ({
                         setLanguageFilter([...languageFilter, lang]);
                       }
                       setLanguageDropdownOpen(false);
+                    }}
+                    sx={{
+                      ...menuItemStyle,
+                      py: 0.5, // Reduce vertical padding
+                      my: 0, // Remove margins
+                      lineHeight: '1.2' // Decrease line height
                     }}
                   >
                     {lang === 'cpp' ? 'C++' : lang.charAt(0).toUpperCase() + lang.slice(1)}
@@ -369,7 +254,9 @@ const RuleFilters: React.FC<RuleFiltersProps> = ({
                       color="primary"
                       variant="outlined"
                       onDelete={() => {
-                        setLanguageFilter(prev => prev.filter(item => item !== value));
+                        // Direct approach without callback to avoid TypeScript errors
+                        const newFilters = languageFilter.filter(item => item !== value);
+                        setLanguageFilter(newFilters);
                       }}
                       sx={{
                         borderRadius: '16px',
@@ -384,162 +271,6 @@ const RuleFilters: React.FC<RuleFiltersProps> = ({
                 ) : (
                   <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', fontStyle: 'italic' }}>
                     No language filters selected
-                  </Typography>
-                )}
-              </Box>
-            </FormControl>
-          </Box>
-        </Grid>
-        
-        {/* Category Filter */}
-        <Grid item xs={12} sm={4}>
-          <Box 
-            sx={{ 
-              p: 2, 
-              bgcolor: 'background.paper', 
-              borderRadius: 2,
-              boxShadow: theme.shadows[1],
-              height: '100%',
-              display: 'flex',
-              flexDirection: 'column'
-            }}
-          >
-            <FormControl fullWidth>
-              <InputLabel 
-                sx={{ 
-                  fontWeight: 'bold', 
-                  color: 'primary.main' 
-                }}
-              >
-                Rule Categories
-              </InputLabel>
-              
-              {/* Dropdown for selecting categories */}
-              <Select
-                multiple
-                open={categoryDropdownOpen}
-                onOpen={() => setCategoryDropdownOpen(true)}
-                onClose={() => setCategoryDropdownOpen(false)}
-                value={categoryFilter}
-                onChange={(e) => {
-                  setCategoryFilter(e.target.value as string[]);
-                  // Close dropdown immediately after selection
-                  setCategoryDropdownOpen(false);
-                }}
-                renderValue={() => {
-                  // Show just a placeholder if items are selected
-                  return categoryFilter.length > 0 ? 
-                    <Typography variant="body2" noWrap sx={{ color: 'text.secondary' }}>
-                      {categoryFilter.length} categories selected
-                    </Typography> : 
-                    <Typography variant="body2" noWrap sx={{ color: 'text.secondary' }}>
-                      Select rule categories
-                    </Typography>;
-                }}
-                size="small"
-                sx={{
-                  borderRadius: 1,
-                  '& .MuiOutlinedInput-notchedOutline': {
-                    borderColor: theme.palette.divider
-                  },
-                  '&:hover .MuiOutlinedInput-notchedOutline': {
-                    borderColor: theme.palette.primary.main
-                  }
-                }}
-                MenuProps={{
-                  // Close on selection
-                  autoFocus: false,
-                  disableAutoFocusItem: true,
-                  disableAutoFocus: true,
-                  PaperProps: {
-                    sx: {
-                      maxHeight: 300,
-                      borderRadius: 2,
-                      boxShadow: theme.shadows[3]
-                    }
-                  }
-                }}
-              >
-                {[
-                  { 
-                    value: 'security', 
-                    label: 'Security', 
-                    icon: <SecurityIcon sx={{ color: theme.palette.error.main, mr: 1, fontSize: '1.2rem' }} />
-                  },
-                  { 
-                    value: 'performance', 
-                    label: 'Performance', 
-                    icon: <SpeedIcon sx={{ color: theme.palette.warning.main, mr: 1, fontSize: '1.2rem' }} /> 
-                  },
-                  { 
-                    value: 'best-practice', 
-                    label: 'Best Practice', 
-                    icon: <CheckCircleIcon sx={{ color: theme.palette.success.main, mr: 1, fontSize: '1.2rem' }} />
-                  }
-                ].map((category) => (
-                  <MenuItem 
-                    key={category.value} 
-                    value={category.value}
-                    onClick={() => {
-                      // Handle single item selection to close dropdown immediately
-                      if (!categoryFilter.includes(category.value)) {
-                        setCategoryFilter([...categoryFilter, category.value]);
-                      }
-                      setCategoryDropdownOpen(false);
-                    }}
-                  >
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      {category.icon}
-                      {category.label}
-                    </Box>
-                  </MenuItem>
-                ))}
-              </Select>
-              
-              {/* Selected categories display (separate from dropdown) */}
-              <Box 
-                sx={{ 
-                  display: 'flex', 
-                  flexWrap: 'wrap', 
-                  gap: 0.5,
-                  mt: 2,
-                  position: 'relative',
-                  zIndex: 5, // Higher z-index to ensure chips are clickable
-                  minHeight: '32px'
-                }}
-              >
-                {categoryFilter.length > 0 ? (
-                  categoryFilter.map((value) => {
-                    // Determine chip color based on category
-                    let chipColor: 'error' | 'warning' | 'success' | 'default' = 'default';
-                    
-                    if (value === 'security') {
-                      chipColor = 'error';
-                    } else if (value === 'performance') {
-                      chipColor = 'warning';
-                    } else if (value === 'best-practice') {
-                      chipColor = 'success';
-                    }
-                    
-                    return (
-                      <Chip 
-                        key={value} 
-                        label={value} 
-                        size="small"
-                        color={chipColor}
-                        onDelete={() => {
-                          setCategoryFilter(prev => prev.filter(item => item !== value));
-                        }}
-                        sx={{
-                          borderRadius: '16px',
-                          transition: 'all 0.2s ease'
-                        }}
-                      />
-                    );
-                  })
-                ) : (
-                  <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', fontStyle: 'italic' }}>
-                    No category filters selected
                   </Typography>
                 )}
               </Box>
