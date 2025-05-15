@@ -59,8 +59,8 @@ interface ScanHistoryItem {
   scan_duration: number;
   scan_status: string;
   scan_metadata?: {
-    scan_type: 'CodeQL' | 'ShiftLeft' | 'Semgrep' | 'Combined SAST';
-    scan_mode?: 'custom' | 'auto';
+    scan_type: 'CodeQL' | 'ShiftLeft' | 'Semgrep' | 'Combined SAST' | 'AI';
+    scan_mode?: 'custom' | 'auto' | 'gemini';
     language?: string;
     individual_durations?: {
       semgrep?: number;
@@ -139,16 +139,22 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
         params: { limit: rowsPerPage, offset: page * rowsPerPage },
       });
 
-      // Filter to only show combined scan results
+      // Support showing both combined SAST and AI scan results
       let filteredData;
       
       // Support both paginated (items+total) and bare array responses
       if (Array.isArray(data)) {
-        filteredData = data.filter(scan => scan.scan_metadata?.scan_type === 'Combined SAST');
+        filteredData = data.filter(scan => 
+          scan.scan_metadata?.scan_type === 'Combined SAST' ||
+          scan.scan_metadata?.scan_type === 'AI'
+        );
         setHistory(filteredData);
         setTotalCount(filteredData.length);
       } else {
-        filteredData = data.items.filter(scan => scan.scan_metadata?.scan_type === 'Combined SAST');
+        filteredData = data.items.filter(scan => 
+          scan.scan_metadata?.scan_type === 'Combined SAST' ||
+          scan.scan_metadata?.scan_type === 'AI'
+        );
         setHistory(filteredData);
         setTotalCount(filteredData.length); // We set the count to the filtered length, not the total from API
       }
@@ -258,7 +264,7 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
   return (
     <Box>
       <Typography variant="h6" gutterBottom>
-        Combined Scan History
+        Scan History
       </Typography>
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
@@ -266,216 +272,228 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
         </Box>
       ) : history.length === 0 ? (
         <Alert severity="info" sx={{ mt: 2 }}>
-          <AlertTitle>No Combined Scan Results</AlertTitle>
-          No combined security scans have been performed yet. Run a combined scan to see results here.
+          <AlertTitle>No Scan Results</AlertTitle>
+          No security scans have been performed yet. Run a scan to see results here.
         </Alert>
       ) : (
-      <TableContainer component={Paper} sx={{ position: 'relative' }}>
-        {loading && (
-          <Box
-            sx={{
-              position: 'absolute',
-              inset: 0,
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              zIndex: 1,
-              bgcolor: 'rgba(255,255,255,0.5)',
-            }}
-          >
-            <CircularProgress size={40} />
-          </Box>
-        )}
+        <TableContainer component={Paper} sx={{ position: 'relative' }}>
+          {loading && (
+            <Box
+              sx={{
+                position: 'absolute',
+                inset: 0,
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                zIndex: 1,
+                bgcolor: 'rgba(255,255,255,0.5)',
+              }}
+            >
+              <CircularProgress size={40} />
+            </Box>
+          )}
 
-        <Table aria-label="scan history table">
-          <TableHead>
-            <TableRow>
-              <TableCell>File Name</TableCell>
-              <TableCell>Scan&nbsp;Type</TableCell>
-              <TableCell>Scan&nbsp;Time</TableCell>
-              <TableCell>Security&nbsp;Score</TableCell>
-              <TableCell>Vulnerabilities</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell width={180}>Actions</TableCell>
-            </TableRow>
-          </TableHead>
+          <Table aria-label="scan history table">
+            <TableHead>
+              <TableRow>
+                <TableCell>File Name</TableCell>
+                <TableCell>Scan&nbsp;Type</TableCell>
+                <TableCell>Scan&nbsp;Time</TableCell>
+                <TableCell>Security&nbsp;Score</TableCell>
+                <TableCell>Vulnerabilities</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell width={180}>Actions</TableCell>
+              </TableRow>
+            </TableHead>
 
-          <TableBody>
-            {history.map((scan) => (
-              <TableRow key={scan.id} hover>
-                {/* ---------------- File name ---------------- */}
-                <TableCell>{scan.file_name}</TableCell>
+            <TableBody>
+              {history.map((scan) => (
+                <TableRow key={scan.id} hover>
+                  {/* ---------------- File name ---------------- */}
+                  <TableCell>{scan.file_name}</TableCell>
 
-                {/* ---------------- Scan type ---------------- */}
-                <TableCell>
-                  <Tooltip
-                    arrow
-                    title={
-                      <>
-                        <Typography
-                          variant="caption"
-                          component="span"
-                          display="block"
-                        >
-                          {scan.scan_metadata?.scan_type === 'CodeQL'
-                            ? 'CodeQL Analysis'
+                  {/* ---------------- Scan type ---------------- */}
+                  <TableCell>
+                    <Tooltip
+                      arrow
+                      title={
+                        <>
+                          <Typography
+                            variant="caption"
+                            component="span"
+                            display="block"
+                          >
+                            {scan.scan_metadata?.scan_type === 'CodeQL'
+                              ? 'CodeQL Analysis'
+                              : scan.scan_metadata?.scan_type === 'ShiftLeft'
+                              ? 'ShiftLeft Analysis'
+                              : scan.scan_metadata?.scan_type === 'AI'
+                              ? 'AI Security Analysis'
+                              : scan.scan_metadata?.scan_type === 'Combined SAST'
+                              ? 'Combined SAST Analysis'
+                              : `Semgrep ${
+                                  scan.scan_metadata?.scan_mode === 'custom'
+                                    ? 'Custom Rules'
+                                    : 'Auto Scan'
+                                }`}
+                          </Typography>
+
+                          {scan.scan_metadata?.language && (
+                            <Typography
+                              variant="caption"
+                              component="span"
+                              display="block"
+                            >
+                              Language: {scan.scan_metadata.language}
+                            </Typography>
+                          )}
+
+                          {scan.scan_metadata?.scan_mode && (
+                            <Typography
+                              variant="caption"
+                              component="span"
+                              display="block"
+                            >
+                              Mode: {scan.scan_metadata.scan_mode}
+                            </Typography>
+                          )}
+                        </>
+                      }
+                    >
+                      <Chip
+                        size="small"
+                        label={
+                          scan.scan_metadata?.scan_type === 'CodeQL'
+                            ? 'CodeQL'
                             : scan.scan_metadata?.scan_type === 'ShiftLeft'
-                            ? 'ShiftLeft Analysis'
-                            : `Semgrep ${
-                                scan.scan_metadata?.scan_mode === 'custom'
-                                  ? 'Custom Rules'
-                                  : 'Auto Scan'
-                              }`}
-                        </Typography>
+                            ? 'ShiftLeft'
+                            : scan.scan_metadata?.scan_type === 'AI'
+                            ? 'AI Scan'
+                            : scan.scan_metadata?.scan_type === 'Combined SAST'
+                            ? 'Combined SAST'
+                            : 'Semgrep'
+                        }
+                        color={
+                          scan.scan_metadata?.scan_type === 'CodeQL'
+                            ? 'secondary'
+                            : scan.scan_metadata?.scan_type === 'ShiftLeft'
+                            ? 'success'
+                            : scan.scan_metadata?.scan_type === 'AI'
+                            ? 'warning'
+                            : scan.scan_metadata?.scan_type === 'Combined SAST'
+                            ? 'info'
+                            : 'primary'
+                        }
+                        sx={{ fontWeight: 'medium' }}
+                      />
+                    </Tooltip>
+                  </TableCell>
 
-                        {scan.scan_metadata?.language && (
-                          <Typography
-                            variant="caption"
-                            component="span"
-                            display="block"
-                          >
-                            Language: {scan.scan_metadata.language}
-                          </Typography>
-                        )}
+                  {/* ---------------- Timestamp ---------------- */}
+                  <TableCell>
+                    {format(new Date(scan.scan_timestamp), 'PP p')}
+                  </TableCell>
 
-                        {scan.scan_metadata?.scan_mode && (
-                          <Typography
-                            variant="caption"
-                            component="span"
-                            display="block"
-                          >
-                            Mode: {scan.scan_metadata.scan_mode}
-                          </Typography>
-                        )}
-                      </>
-                    }
-                  >
+                  {/* ---------------- Score ---------------- */}
+                  <TableCell>
                     <Chip
                       size="small"
-                      label={
-                        scan.scan_metadata?.scan_type === 'CodeQL'
-                          ? 'CodeQL'
-                          : scan.scan_metadata?.scan_type === 'ShiftLeft'
-                          ? 'ShiftLeft'
-                          : 'Semgrep'
-                      }
+                      label={`${Math.floor(scan.security_score)}/10`}
                       color={
-                        scan.scan_metadata?.scan_type === 'CodeQL'
-                          ? 'secondary'
-                          : scan.scan_metadata?.scan_type === 'ShiftLeft'
+                        scan.security_score >= 7
                           ? 'success'
-                          : 'primary'
+                          : scan.security_score >= 4
+                          ? 'warning'
+                          : 'error'
                       }
-                      sx={{ fontWeight: 'medium' }}
                     />
-                  </Tooltip>
-                </TableCell>
+                  </TableCell>
 
-                {/* ---------------- Timestamp ---------------- */}
-                <TableCell>
-                  {format(new Date(scan.scan_timestamp), 'PP p')}
-                </TableCell>
+                  {/* ---------------- Severities ---------------- */}
+                  <TableCell>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      {getSeverityIcon(scan.severity_count.ERROR, 'ERROR')}
+                      {getSeverityIcon(scan.severity_count.WARNING, 'WARNING')}
+                      {getSeverityIcon(scan.severity_count.INFO, 'INFO')}
+                    </Box>
+                  </TableCell>
 
-                {/* ---------------- Score ---------------- */}
-                <TableCell>
-                  <Chip
-                    size="small"
-                    label={`${Math.floor(scan.security_score)}/10`}
-                    color={
-                      scan.security_score >= 7
-                        ? 'success'
-                        : scan.security_score >= 4
-                        ? 'warning'
-                        : 'error'
-                    }
-                  />
-                </TableCell>
+                  
 
-                {/* ---------------- Severities ---------------- */}
-                <TableCell>
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    {getSeverityIcon(scan.severity_count.ERROR, 'ERROR')}
-                    {getSeverityIcon(scan.severity_count.WARNING, 'WARNING')}
-                    {getSeverityIcon(scan.severity_count.INFO, 'INFO')}
-                  </Box>
-                </TableCell>
+                  {/* ---------------- Status ---------------- */}
+                  <TableCell>
+                    <Chip
+                      size="small"
+                      label={scan.scan_status}
+                      color={scan.scan_status === 'completed' ? 'success' : 'default'}
+                    />
+                  </TableCell>
 
-                
+                  {/* ---------------- Actions ---------------- */}
+                  <TableCell>
+                    <Box sx={{ display: 'flex' }}>
+                      <Tooltip title="View Scan Results">
+                        <IconButton
+                          size="small"
+                          color="primary"
+                          onClick={() => onViewScan(scan.id)}
+                        >
+                          <VisibilityIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      
+                      <Tooltip title="Compare with Exploit DB">
+                        <IconButton
+                          size="small"
+                          color="secondary"
+                          onClick={() => handleCompareClick(scan.id)}
+                          disabled={loadingComparison && selectedScanId === scan.id}
+                        >
+                          {loadingComparison && selectedScanId === scan.id ? (
+                            <CircularProgress size={18} />
+                          ) : (
+                            <CompareIcon fontSize="small" />
+                          )}
+                        </IconButton>
+                      </Tooltip>
+                      
+                      <Tooltip title="Delete Scan">
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => handleDeleteClick(scan.id)}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  </TableCell>
+                </TableRow>
+              ))}
 
-                {/* ---------------- Status ---------------- */}
-                <TableCell>
-                  <Chip
-                    size="small"
-                    label={scan.scan_status}
-                    color={scan.scan_status === 'completed' ? 'success' : 'default'}
-                  />
-                </TableCell>
+              {/* Empty-state row (optional) */}
+              {!loading && history.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={8} align="center">
+                    <Typography variant="body2" color="textSecondary" py={2}>
+                      No scan history found
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
 
-                {/* ---------------- Actions ---------------- */}
-                <TableCell>
-                  <Box sx={{ display: 'flex' }}>
-                    <Tooltip title="View Scan Results">
-                      <IconButton
-                        size="small"
-                        color="primary"
-                        onClick={() => onViewScan(scan.id)}
-                      >
-                        <VisibilityIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    
-                    <Tooltip title="Compare with Exploit DB">
-                      <IconButton
-                        size="small"
-                        color="secondary"
-                        onClick={() => handleCompareClick(scan.id)}
-                        disabled={loadingComparison && selectedScanId === scan.id}
-                      >
-                        {loadingComparison && selectedScanId === scan.id ? (
-                          <CircularProgress size={18} />
-                        ) : (
-                          <CompareIcon fontSize="small" />
-                        )}
-                      </IconButton>
-                    </Tooltip>
-                    
-                    <Tooltip title="Delete Scan">
-                      <IconButton
-                        size="small"
-                        color="error"
-                        onClick={() => handleDeleteClick(scan.id)}
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  </Box>
-                </TableCell>
-              </TableRow>
-            ))}
-
-            {/* Empty-state row (optional) */}
-            {!loading && history.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={8} align="center">
-                  <Typography variant="body2" color="textSecondary" py={2}>
-                    No scan history found
-                  </Typography>
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-
-        <TablePagination
-          rowsPerPageOptions={[5, 10, 25]}
-          component="div"
-          count={totalCount}
-          rowsPerPage={rowsPerPage}
-          page={page}
-          onPageChange={handleChangePage}
-          onRowsPerPageChange={handleChangeRowsPerPage}
-        />
-      </TableContainer>
+          <TablePagination
+            rowsPerPageOptions={[5, 10, 25]}
+            component="div"
+            count={totalCount}
+            rowsPerPage={rowsPerPage}
+            page={page}
+            onPageChange={handleChangePage}
+            onRowsPerPageChange={handleChangeRowsPerPage}
+          />
+        </TableContainer>
       )}
 
       {/* ---------------- Delete dialog ---------------- */}
