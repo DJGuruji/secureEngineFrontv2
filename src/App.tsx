@@ -107,6 +107,7 @@ function App() {
   const [loadingSastProcessing, setLoadingSastProcessing] = useState(false);
   const [loadingCodeQLProcessing, setLoadingCodeQLProcessing] = useState(false);
   const [loadingShiftLeftProcessing, setLoadingShiftLeftProcessing] = useState(false);
+  const [loadingAiScan, setLoadingAiScan] = useState(false);
   
   const [error, setError] = useState<string | null>(null);
   const [tabValue, setTabValue] = useState(0);
@@ -123,7 +124,7 @@ function App() {
   const isSastLoading = loadingSastUpload || loadingSastProcessing;
   const isCodeQLLoading = loadingCodeQLUpload || loadingCodeQLProcessing;
   const isShiftLeftLoading = loadingShiftLeftUpload || loadingShiftLeftProcessing;
-  const isAnyScanLoading = isSastLoading || isCodeQLLoading || isShiftLeftLoading;
+  const isAnyScanLoading = isSastLoading || isCodeQLLoading || isShiftLeftLoading || loadingAiScan;
   
   // New state to track if "Run All SAST" is specifically running
   const [runningAllSast, setRunningAllSast] = useState(false);
@@ -343,6 +344,52 @@ function App() {
     }
   };
 
+  // Add AI scan function
+  const startAiScan = async () => {
+    if (!uploadedFile) return;
+    
+    try {
+      // Reset states at the start
+      setError(null);
+      setScanStarted(true);
+      setResultsButtonClicked(false);
+      
+      // Set loading state
+      setLoadingAiScan(true);
+      
+      const formData = new FormData();
+      formData.append('file', uploadedFile);
+  
+      // Upload file to AI scan endpoint
+      const response = await fetch('http://localhost:8000/api/v1/scan/ai-scan', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to scan file with AI');
+      }
+      
+      const data = await response.json();
+      
+      // Make sure the scan type is correctly set for the UI
+      if (data.scan_metadata) {
+        data.scan_metadata.scan_type = 'AI Scan';
+      }
+      
+      // Store AI scan results
+      setAiScanResults(data);
+      setScanResults(data);
+      setDialogOpen(true);
+      
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred during AI scan');
+    } finally {
+      setLoadingAiScan(false);
+    }
+  };
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
@@ -414,6 +461,7 @@ const classifyVulns = (vulns: Vulnerability[]) => {
   const [shiftLeftResults, setShiftLeftResults] = useState<any>(null);
   const [codeQLResults, setCodeQLResults] = useState<any>(null);
   const [combinedResults, setCombinedResults] = useState<any>(null);
+  const [aiScanResults, setAiScanResults] = useState<any>(null);
   // Add state to track if the results button has been clicked
   const [resultsButtonClicked, setResultsButtonClicked] = useState<boolean>(false);
   
@@ -1207,57 +1255,85 @@ const classifyVulns = (vulns: Vulnerability[]) => {
                   </Button>
                   */}
                   
-                  {/* Only show the "Run All SAST" button with enhanced styling */}
-                  <Button
-                    variant="contained"
-                    size="large"
-                    onClick={runAllScanners}
-                    disabled={isAnyScanLoading}
-                    sx={{
-                      background: 'linear-gradient(45deg, #2196F3 30%, #9c27b0 70%, #4CAF50 100%)',
-                      fontSize: '1.1rem',
-                      fontWeight: 'bold',
-                      padding: '12px 24px',
-                      ...(runningAllSast ? processingButtonStyle : {})
-                    }}
-                  >
-                    {loadingSastUpload ? (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <CircularProgress size={20} color="inherit" />
-                        Scanning File for Semgrep...
-                      </Box>
-                    ) : loadingSastProcessing ? (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <CircularProgress size={20} color="inherit" />
-                        Running Semgrep Analysis...
-                      </Box>
-                    ) : loadingShiftLeftUpload ? (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <CircularProgress size={20} color="inherit" />
-                        Scanning File for ShiftLeft...
-                      </Box>
-                    ) : loadingShiftLeftProcessing ? (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <CircularProgress size={20} color="inherit" />
-                        Running ShiftLeft Analysis...
-                      </Box>
-                    ) : loadingCodeQLUpload ? (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <CircularProgress size={20} color="inherit" />
-                        Scanning File for CodeQL...
-                      </Box>
-                    ) : loadingCodeQLProcessing ? (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <CircularProgress size={20} color="inherit" />
-                        Running CodeQL Analysis...
-                      </Box>
-                    ) : (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <SecurityIcon />
-                        Run All SAST Scans
-                      </Box>
-                    )}
-                  </Button>
+                  {/* Display both scan buttons */}
+                  <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
+                    <Button
+                      variant="contained"
+                      size="large"
+                      onClick={runAllScanners}
+                      disabled={isAnyScanLoading}
+                      sx={{
+                        background: 'linear-gradient(45deg, #2196F3 30%, #9c27b0 70%, #4CAF50 100%)',
+                        fontSize: '1.1rem',
+                        fontWeight: 'bold',
+                        padding: '12px 24px',
+                        ...(runningAllSast ? processingButtonStyle : {})
+                      }}
+                    >
+                      {loadingSastUpload ? (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <CircularProgress size={20} color="inherit" />
+                          Scanning File for Semgrep...
+                        </Box>
+                      ) : loadingSastProcessing ? (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <CircularProgress size={20} color="inherit" />
+                          Running Semgrep Analysis...
+                        </Box>
+                      ) : loadingShiftLeftUpload ? (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <CircularProgress size={20} color="inherit" />
+                          Scanning File for ShiftLeft...
+                        </Box>
+                      ) : loadingShiftLeftProcessing ? (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <CircularProgress size={20} color="inherit" />
+                          Running ShiftLeft Analysis...
+                        </Box>
+                      ) : loadingCodeQLUpload ? (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <CircularProgress size={20} color="inherit" />
+                          Scanning File for CodeQL...
+                        </Box>
+                      ) : loadingCodeQLProcessing ? (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <CircularProgress size={20} color="inherit" />
+                          Running CodeQL Analysis...
+                        </Box>
+                      ) : (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <SecurityIcon />
+                          Run All SAST Scans
+                        </Box>
+                      )}
+                    </Button>
+                    
+                    <Button
+                      variant="contained"
+                      size="large"
+                      onClick={startAiScan}
+                      disabled={isAnyScanLoading}
+                      sx={{
+                        background: 'linear-gradient(45deg, #FF5722 30%, #FFC107 90%)',
+                        fontSize: '1.1rem',
+                        fontWeight: 'bold',
+                        padding: '12px 24px',
+                        ...(loadingAiScan ? processingButtonStyle : {})
+                      }}
+                    >
+                      {loadingAiScan ? (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <CircularProgress size={20} color="inherit" />
+                          Running AI Scan...
+                        </Box>
+                      ) : (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <SpeedIcon />
+                          Scan with AI
+                        </Box>
+                      )}
+                    </Button>
+                  </Box>
                 </Box>
               </Box>
             )}
@@ -1308,6 +1384,7 @@ const classifyVulns = (vulns: Vulnerability[]) => {
               {combinedResults ? 'Combined Security Analysis Results' : 
                scanResults?.scan_metadata?.scan_type === 'CodeQL' ? 'CodeQL Scan Results' : 
                scanResults?.scan_metadata?.scan_type === 'ShiftLeft' ? 'ShiftLeft Scan Results' : 
+               scanResults?.scan_metadata?.scan_type === 'AI Scan' ? 'AI Security Analysis Results' :
                'Security Scan Results'}
               {combinedResults && (
                 <Typography 
