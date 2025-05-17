@@ -557,6 +557,7 @@ function App() {
                     resultsButtonClicked={resultsButtonClicked}
                     setDialogOpen={setDialogOpen}
                     setResultsButtonClicked={setResultsButtonClicked}
+                    disableRunAllSast={ruleType === 'custom' && !selectedRule}
                   />
                 </Box>
               </Box>

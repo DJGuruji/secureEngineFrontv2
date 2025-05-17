@@ -3,11 +3,13 @@ import {
   Box, 
   Button, 
   CircularProgress,
-  Typography
+  Typography,
+  Tooltip
 } from '@mui/material';
 import SecurityIcon from '@mui/icons-material/Security';
 import SpeedIcon from '@mui/icons-material/Speed';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import InfoIcon from '@mui/icons-material/Info';
 
 interface ScanActionsProps {
   uploadedFile: File | null;
@@ -28,6 +30,7 @@ interface ScanActionsProps {
   resultsButtonClicked: boolean;
   setDialogOpen: (open: boolean) => void;
   setResultsButtonClicked: (clicked: boolean) => void;
+  disableRunAllSast?: boolean;
 }
 
 const ScanActions: React.FC<ScanActionsProps> = ({
@@ -48,9 +51,65 @@ const ScanActions: React.FC<ScanActionsProps> = ({
   combinedResults,
   resultsButtonClicked,
   setDialogOpen,
-  setResultsButtonClicked
+  setResultsButtonClicked,
+  disableRunAllSast = false
 }) => {
   if (!uploadedFile) return null;
+  
+  // Run All SAST button component with conditional tooltip
+  const runAllSastButton = (
+    <Button
+      variant="contained"
+      size="large"
+      onClick={runAllScanners}
+      disabled={isAnyScanLoading || disableRunAllSast}
+      sx={{
+        background: 'linear-gradient(45deg, #2196F3 30%, #9c27b0 70%, #4CAF50 100%)',
+        fontSize: '1.1rem',
+        fontWeight: 'bold',
+        padding: '12px 24px',
+        ...(runningAllSast ? processingButtonStyle : {}),
+        ...(disableRunAllSast ? { opacity: 0.7 } : {})
+      }}
+    >
+      {loadingSastUpload ? (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <CircularProgress size={20} color="inherit" />
+          Scanning File for Semgrep...
+        </Box>
+      ) : loadingSastProcessing ? (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <CircularProgress size={20} color="inherit" />
+          Running Semgrep Analysis...
+        </Box>
+      ) : loadingShiftLeftUpload ? (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <CircularProgress size={20} color="inherit" />
+          Scanning File for ShiftLeft...
+        </Box>
+      ) : loadingShiftLeftProcessing ? (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <CircularProgress size={20} color="inherit" />
+          Running ShiftLeft Analysis...
+        </Box>
+      ) : loadingCodeQLUpload ? (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <CircularProgress size={20} color="inherit" />
+          Scanning File for CodeQL...
+        </Box>
+      ) : loadingCodeQLProcessing ? (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <CircularProgress size={20} color="inherit" />
+          Running CodeQL Analysis...
+        </Box>
+      ) : (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <SecurityIcon />
+          Run All SAST Scans
+        </Box>
+      )}
+    </Button>
+  );
   
   return (
     <>
@@ -58,56 +117,13 @@ const ScanActions: React.FC<ScanActionsProps> = ({
     <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
       {/* Row of Run All SAST and AI Scan */}
       <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
-        <Button
-          variant="contained"
-          size="large"
-          onClick={runAllScanners}
-          disabled={isAnyScanLoading}
-          sx={{
-            background: 'linear-gradient(45deg, #2196F3 30%, #9c27b0 70%, #4CAF50 100%)',
-            fontSize: '1.1rem',
-            fontWeight: 'bold',
-            padding: '12px 24px',
-            ...(runningAllSast ? processingButtonStyle : {})
-          }}
-        >
-          {loadingSastUpload ? (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <CircularProgress size={20} color="inherit" />
-              Scanning File for Semgrep...
-            </Box>
-          ) : loadingSastProcessing ? (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <CircularProgress size={20} color="inherit" />
-              Running Semgrep Analysis...
-            </Box>
-          ) : loadingShiftLeftUpload ? (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <CircularProgress size={20} color="inherit" />
-              Scanning File for ShiftLeft...
-            </Box>
-          ) : loadingShiftLeftProcessing ? (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <CircularProgress size={20} color="inherit" />
-              Running ShiftLeft Analysis...
-            </Box>
-          ) : loadingCodeQLUpload ? (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <CircularProgress size={20} color="inherit" />
-              Scanning File for CodeQL...
-            </Box>
-          ) : loadingCodeQLProcessing ? (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <CircularProgress size={20} color="inherit" />
-              Running CodeQL Analysis...
-            </Box>
-          ) : (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <SecurityIcon />
-              Run All SAST Scans
-            </Box>
-          )}
-        </Button>
+        {disableRunAllSast ? (
+          <Tooltip title="Please select a custom Semgrep rule to enable scanning" arrow>
+            <span>{runAllSastButton}</span>
+          </Tooltip>
+        ) : (
+          runAllSastButton
+        )}
   
         <Button
           variant="contained"
@@ -158,8 +174,7 @@ const ScanActions: React.FC<ScanActionsProps> = ({
         </Button>
       )}
     </Box>
-  </>
-  
+    </>
   );
 };
 
