@@ -22,8 +22,6 @@ import FileUpload from './components/FileUpload';
 import ScanHistory from './components/ScanHistory';
 import SemgrepRuleSelector from './components/SemgrepRuleSelector';
 import RuleDetails from './components/RuleDetails';
-import RuleFilters from './components/RuleFilters';
-import CreditsInfo from './components/CreditsInfo';
 import TabPanel from './components/TabPanel';
 import ScanDialog from './components/ScanDialog';
 import ScanActions from './components/ScanActions';
@@ -31,6 +29,7 @@ import { Vulnerability } from './types/vulnerability';
 import { startAiScan } from './components/ScanFunctions';
 import { combineAndStoreResults } from './components/CombineResults';
 import { createProcessingButtonStyle, createUploadingButtonStyle } from './styles/animations';
+import CreditsInfo from './components/CreditsInfo';
 
 const API_UPLOAD_URL = 'http://localhost:8000/api/v1/scan/upload';
 const API_SCAN_URL = 'http://localhost:8000/api/v1/scan/scan';
@@ -186,11 +185,42 @@ function App() {
     try {
       setLoadingSastProcessing(true);
       setError(null);
+      
+      // Clear previous results to avoid showing the wrong type
+      setCombinedResults(null);
+      setSemgrepResults(null);
+      setShiftLeftResults(null);
+      setCodeQLResults(null);
+      setAiScanResults(null);
+      
       const response = await fetch(`${API_SCAN_URL}/${scanId}`);
       if (!response.ok) {
         throw new Error('Failed to fetch scan details');
       }
+      
       const data = await response.json();
+      
+      // Determine scan type based on metadata
+      if (data?.scan_metadata?.scan_type === 'AI') {
+        setAiScanResults(data);
+        setCombinedResults(null); // Make sure combined results are not shown
+      } else if (data?.scan_metadata?.scan_type === 'Combined') {
+        setCombinedResults(data);
+      } else {
+        // Individual scan types (Semgrep, ShiftLeft, CodeQL)
+        switch (data?.scan_metadata?.scan_type) {
+          case 'Semgrep':
+            setSemgrepResults(data);
+            break;
+          case 'ShiftLeft':
+            setShiftLeftResults(data);
+            break;
+          case 'CodeQL':
+            setCodeQLResults(data);
+            break;
+        }
+      }
+      
       setScanResults(data);
       setDialogOpen(true);
     } catch (err) {
@@ -344,15 +374,6 @@ function App() {
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [totalRules, setTotalRules] = useState(0);
-  // Filter state variables
-  const [severityFilter, setSeverityFilter] = useState('all');
-  const [languageFilter, setLanguageFilter] = useState<string[]>([]);
-  const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
-  const [scanTypeFilter, setScanTypeFilter] = useState<string[]>([]);
-  // State to control dropdown open/close
-  const [languageDropdownOpen, setLanguageDropdownOpen] = useState(false);
-  const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
-  const [scanTypeDropdownOpen, setScanTypeDropdownOpen] = useState(false);
   
   const autocompleteRef = useRef<HTMLDivElement>(null);
   const listboxRef = useRef<HTMLUListElement>(null);
@@ -365,22 +386,12 @@ function App() {
     try {
       setLoadingRules(true);
       
-      // Build filter parameters
+      // Build parameters without filters
       const params: any = {
         query: query || undefined,
         limit: 50,
         offset: newOffset
       };
-      
-      // Add severity filter
-      if (severityFilter !== 'all') {
-        params.severity = severityFilter;
-      }
-      
-      // Add rule_type filter if there's only one selected
-      if (scanTypeFilter.length === 1) {
-        params.rule_type = scanTypeFilter[0];
-      }
       
       const response = await axios.get<SemgrepRulesResponse>(`http://localhost:8000/api/v1/scan/semgrep-rules`, {
         params
@@ -392,87 +403,6 @@ function App() {
       
       // Don't filter out incomplete rules - just ensure they have an ID
       let validRules = newRules.filter((rule: any) => rule.id);
-      
-      // Apply client-side filtering for languages
-      if (languageFilter.length > 0) {
-        validRules = validRules.filter((rule: any) => {
-          // Check in rule.meta.languages array first if it exists
-          if (rule.meta && rule.meta.languages && Array.isArray(rule.meta.languages)) {
-            if (rule.meta.languages.some((lang: string) => 
-              languageFilter.includes(lang.toLowerCase()))) {
-              return true;
-            }
-          }
-          
-          // Then check in rule.languages array
-          if (rule.languages && Array.isArray(rule.languages)) {
-            if (rule.languages.some((lang: string) => 
-              languageFilter.includes(lang.toLowerCase()))) {
-              return true;
-            }
-          }
-          
-          // Also check in rule.path
-          if (rule.path) {
-            return languageFilter.some(lang => 
-              rule.path.toLowerCase().includes(lang.toLowerCase()));
-          }
-          
-          return false;
-        });
-      }
-      
-      // Apply client-side filtering for category
-      if (categoryFilter.length > 0) {
-        validRules = validRules.filter((rule: any) => {
-          // Check both direct category and meta.category field
-          const directCategory = rule.category || '';
-          const metaCategory = rule.meta && rule.meta.category ? rule.meta.category : '';
-          
-          if (!directCategory && !metaCategory) return false;
-          
-          const ruleCategoryLower = (directCategory || metaCategory).toLowerCase();
-          return categoryFilter.some(category => 
-            ruleCategoryLower.includes(category.toLowerCase()));
-        });
-      }
-      
-      // Apply client-side filtering for scan types
-      if (scanTypeFilter.length > 0) {
-        validRules = validRules.filter((rule: any) => {
-          // Check the rule_type field directly at the root level
-          if (rule.rule_type) {
-            const ruleType = rule.rule_type.toLowerCase();
-            return scanTypeFilter.some(type => 
-              ruleType === type.toLowerCase());
-          }
-          
-          // Fallback checks in other locations
-          // Check in rule.meta.metadata.type field if it exists
-          if (rule.meta && rule.meta.metadata && rule.meta.metadata.type) {
-            const ruleType = rule.meta.metadata.type.toLowerCase();
-            return scanTypeFilter.some(type => 
-              ruleType === type.toLowerCase());
-          }
-          
-          // Check in rule.metadata.type field if it exists
-          if (rule.metadata && rule.metadata.type) {
-            const ruleType = rule.metadata.type.toLowerCase();
-            return scanTypeFilter.some(type => 
-              ruleType === type.toLowerCase());
-          }
-          
-          // Check in rule.id field for common scan type identifiers
-          if (rule.id) {
-            const ruleId = rule.id.toLowerCase();
-            const matchesType = scanTypeFilter.some(type => 
-              ruleId.includes(type.toLowerCase()));
-            return matchesType;
-          }
-          
-          return false;
-        });
-      }
       
       // Update state based on whether we're appending or replacing
       if (append) {
@@ -487,7 +417,7 @@ function App() {
     } finally {
       setLoadingRules(false);
     }
-  }, [severityFilter, languageFilter, categoryFilter, scanTypeFilter]);
+  }, []);
   
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -505,7 +435,7 @@ function App() {
       setHasMore(true);
       fetchSemgrepRules(debouncedSearchQuery, 0, false);
     }
-  }, [ruleType, debouncedSearchQuery, fetchSemgrepRules, severityFilter, languageFilter, categoryFilter, scanTypeFilter]);
+  }, [ruleType, debouncedSearchQuery, fetchSemgrepRules]);
   
   // Handle infinite scroll
   const handleScroll = useCallback((event: React.UIEvent<HTMLUListElement>) => {
@@ -577,31 +507,10 @@ function App() {
                 
                 {ruleType === 'custom' && (
                   <Box sx={{ mb: 3 }}>
-                    <RuleFilters
-                      severityFilter={severityFilter}
-                      setSeverityFilter={setSeverityFilter}
-                      languageFilter={languageFilter}
-                      setLanguageFilter={setLanguageFilter}
-                      categoryFilter={categoryFilter}
-                      setCategoryFilter={setCategoryFilter}
-                      languageDropdownOpen={languageDropdownOpen}
-                      setLanguageDropdownOpen={setLanguageDropdownOpen}
-                      categoryDropdownOpen={categoryDropdownOpen}
-                      setCategoryDropdownOpen={setCategoryDropdownOpen}
-                      scanTypeFilter={scanTypeFilter}
-                      setScanTypeFilter={setScanTypeFilter}
-                      scanTypeDropdownOpen={scanTypeDropdownOpen}
-                      setScanTypeDropdownOpen={setScanTypeDropdownOpen}
-                    />
-                    
                     <SemgrepRuleSelector
                       selectedRule={selectedRule}
                       setSelectedRule={setSelectedRule}
                       ruleType={ruleType}
-                      severityFilter={severityFilter}
-                      languageFilter={languageFilter}
-                      categoryFilter={categoryFilter}
-                      scanTypeFilter={scanTypeFilter}
                     />
                     
                     {selectedRule && <RuleDetails selectedRule={selectedRule} />}
@@ -613,16 +522,27 @@ function App() {
                     uploadedFile={uploadedFile}
                     isAnyScanLoading={isAnyScanLoading}
                     runAllScanners={runAllScanners}
-                    startAiScan={() => startAiScan({
-                      uploadedFile,
-                      setScanResults,
-                      setError,
-                      setScanStarted,
-                      setDialogOpen,
-                      setLoadingUpload: () => {},
-                      setLoadingProcessing: () => {},
-                      setCreditsRefreshTrigger
-                    })}
+                    startAiScan={() => {
+                      // Set loading states for AI scan
+                      setLoadingAiScan(true);
+                      
+                      startAiScan({
+                        uploadedFile,
+                        setScanResults: (results) => {
+                          setScanResults(results);
+                          setAiScanResults(results);
+                          setCombinedResults(null); // Clear combined results when showing AI results
+                        },
+                        setError,
+                        setScanStarted,
+                        setDialogOpen,
+                        setLoadingUpload: () => {}, // These are handled directly here
+                        setLoadingProcessing: () => {}, // These are handled directly here
+                        setCreditsRefreshTrigger
+                      }).finally(() => {
+                        setLoadingAiScan(false);
+                      });
+                    }}
                     loadingSastUpload={loadingSastUpload}
                     loadingSastProcessing={loadingSastProcessing}
                     loadingShiftLeftUpload={loadingShiftLeftUpload}
@@ -668,6 +588,7 @@ function App() {
         loadingCodeQLUpload={loadingCodeQLUpload}
         loadingCodeQLProcessing={loadingCodeQLProcessing}
         runningAllSast={runningAllSast}
+        loadingAiScan={loadingAiScan}
       />
     </Container>
   );

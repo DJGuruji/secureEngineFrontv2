@@ -2,10 +2,9 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Autocomplete,
   Box,
-  Chip,
   CircularProgress,
   Grid,
-  ListSubheader,
+  IconButton,
   Paper,
   TextField,
   Typography,
@@ -16,17 +15,18 @@ import SearchIcon from '@mui/icons-material/Search';
 import SecurityIcon from '@mui/icons-material/Security';
 import SpeedIcon from '@mui/icons-material/Speed';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import LaunchIcon from '@mui/icons-material/Launch';
+import ClearIcon from '@mui/icons-material/Clear';
 import axios from 'axios';
 
 interface SemgrepRuleSelectorProps {
   selectedRule: any;
   setSelectedRule: (rule: any) => void;
   ruleType: 'auto' | 'custom';
-  languageFilter: string[];
-  severityFilter: string;
-  categoryFilter: string[];
-  scanTypeFilter: string[];
+  // We keep these props for compatibility but they won't be used
+  languageFilter?: string[];
+  severityFilter?: string;
+  categoryFilter?: string[];
+  scanTypeFilter?: string[];
   setRuleDetailsLoading?: (loading: boolean) => void;
 }
 
@@ -34,10 +34,6 @@ const SemgrepRuleSelector: React.FC<SemgrepRuleSelectorProps> = ({
   selectedRule,
   setSelectedRule,
   ruleType,
-  languageFilter,
-  severityFilter,
-  categoryFilter,
-  scanTypeFilter,
   setRuleDetailsLoading
 }) => {
   const theme = useTheme();
@@ -68,18 +64,12 @@ const SemgrepRuleSelector: React.FC<SemgrepRuleSelectorProps> = ({
     try {
       setLoadingRules(true);
       
-      // Build filter parameters
+      // Simplified parameters, no filtering
       const params: any = {
         query: query || undefined,
         limit: 50,
         offset: newOffset
       };
-      
-      // Add rule_type filter if there's only one selected
-      if (scanTypeFilter.length === 1) {
-        params.rule_type = scanTypeFilter[0];
-        console.log(`SemgrepRuleSelector: Sending rule_type filter to backend: ${scanTypeFilter[0]}`);
-      }
       
       const response = await axios.get(`http://localhost:8000/api/v1/scan/semgrep-rules`, {
         params
@@ -94,69 +84,8 @@ const SemgrepRuleSelector: React.FC<SemgrepRuleSelectorProps> = ({
       
       const { rules, total, has_more } = responseData;
       
-      // Log comprehensive information about received rules
-      console.log(`Received ${rules?.length || 0} rules from API`);
-      
-      // Log structure of first rule to help debugging
-      if (rules && rules.length > 0) {
-        console.log('First rule structure:', rules[0]);
-        console.log('Languages in first rule:', rules[0].languages);
-        console.log('Meta object in first rule:', rules[0].meta);
-        console.log('Rule type in first rule:', rules[0].rule_type);
-        if (rules[0].meta && rules[0].meta.languages) {
-          console.log('Languages in meta:', rules[0].meta.languages);
-        }
-      }
-      
       // Don't filter out incomplete rules - just ensure they have an ID
       let validRules = rules.filter((rule: any) => rule.id);
-      
-      // Apply client-side filtering for languages
-      if (languageFilter.length > 0) {
-        validRules = validRules.filter((rule: any) => {
-          // Check in rule.meta.languages array first if it exists
-          if (rule.meta && rule.meta.languages && Array.isArray(rule.meta.languages)) {
-            if (rule.meta.languages.some((lang: string) => 
-              languageFilter.includes(lang.toLowerCase()))) {
-              return true;
-            }
-          }
-          
-          // Then check in rule.languages array
-          if (rule.languages && Array.isArray(rule.languages)) {
-            if (rule.languages.some((lang: string) => 
-              languageFilter.includes(lang.toLowerCase()))) {
-              return true;
-            }
-          }
-          
-          // Also check in rule.path
-          if (rule.path) {
-            return languageFilter.some(lang => 
-              rule.path.toLowerCase().includes(lang.toLowerCase()));
-          }
-          
-          return false;
-        });
-      }
-      
-      // Apply client-side filtering for scan types (rule_type)
-      if (scanTypeFilter.length > 0) {
-        validRules = validRules.filter((rule: any) => {
-          // Check the rule_type field directly at the root level
-          if (rule.rule_type) {
-            const ruleType = rule.rule_type.toLowerCase();
-            return scanTypeFilter.some(type => 
-              ruleType === type.toLowerCase());
-          }
-          
-          return false;
-        });
-      }
-      
-      if (validRules.length < rules.length) {
-        console.warn(`Filtered out ${rules.length - validRules.length} rules with missing IDs or that didn't match filters`);
-      }
       
       // Update state based on whether we're appending or replacing
       if (append) {
@@ -173,17 +102,15 @@ const SemgrepRuleSelector: React.FC<SemgrepRuleSelectorProps> = ({
     } finally {
       setLoadingRules(false);
     }
-  }, [languageFilter, scanTypeFilter]);
+  }, []);
   
   // Fetch rules when component mounts or when query changes
   useEffect(() => {
-    if (ruleType === 'custom') {
-      // Reset pagination when query changes
-      setOffset(0);
-      setHasMore(true);
-      fetchSemgrepRules(debouncedSearchQuery, 0, false);
-    }
-  }, [ruleType, debouncedSearchQuery, fetchSemgrepRules]);
+    // Reset pagination when query changes
+    setOffset(0);
+    setHasMore(true);
+    fetchSemgrepRules(debouncedSearchQuery, 0, false);
+  }, [debouncedSearchQuery, fetchSemgrepRules]);
   
   // Handle infinite scroll
   const handleScroll = useCallback((event: React.UIEvent<HTMLUListElement>) => {
@@ -195,235 +122,239 @@ const SemgrepRuleSelector: React.FC<SemgrepRuleSelectorProps> = ({
       fetchSemgrepRules(debouncedSearchQuery, offset + 50, true);
     }
   }, [hasMore, loadingRules, debouncedSearchQuery, offset, fetchSemgrepRules]);
-
-  const handleRuleSelection = async (event: any, newValue: any) => {
-    if (newValue && newValue.id) {
-      try {
-        // Immediately set loading state
-        setLoadingRuleDetails(true);
-        // Notify parent component of loading state
-        if (setRuleDetailsLoading) setRuleDetailsLoading(true);
-        
-        // Store the basic rule info temporarily so it shows in the search bar
-        setTempSelectedRule(newValue);
-        
-        // Clear existing rule to show loading spinner instead of old rule details
-        setSelectedRule(null);
-        
-        // Store the ID for the API call
-        const ruleId = newValue.id;
-        
-        console.log(`Fetching detailed rule information for ID: ${ruleId}`);
-        
-        // Fetch detailed rule information using ID
-        const response = await axios.get(`http://localhost:8000/api/v1/scan/semgrep-rule/${ruleId}`);
-        
-        // Type assertion for response data
-        const responseData = response.data as any;
-        
-        // Log the response structure for debugging
-        console.log('API response structure:', Object.keys(responseData));
-        console.log('API response data:', responseData);
-        
-        // Check for languages in the API response
-        if (responseData.definition && responseData.definition.rules && responseData.definition.rules.length > 0) {
-          console.log('Languages in definition:', responseData.definition.rules[0].languages);
-        }
-        
-        // Only set the selected rule after we have the detailed information
-        if (responseData) {
-          // Ensure the ID from the list is preserved
-          const detailedRule = {
-            ...responseData,
-            id: ruleId
-          };
-          
-          console.log('Detailed rule structure:', Object.keys(detailedRule));
-          console.log('Rule path:', detailedRule.path);
-          
-          // Now set the selected rule with complete details
-          setSelectedRule(detailedRule);
-        }
-      } catch (error) {
-        console.error('Error fetching detailed rule information:', error);
-        // If there's an error, still keep the basic rule info in the search bar
-        setSelectedRule(newValue);
-      } finally {
-        setLoadingRuleDetails(false);
-        // Notify parent component loading is complete
-        if (setRuleDetailsLoading) setRuleDetailsLoading(false);
-        // Clear the temporary selection
-        setTempSelectedRule(null);
+  
+  // Function to fetch a specific rule by ID
+  const fetchRuleById = useCallback(async (ruleId: string) => {
+    try {
+      setLoadingRuleDetails(true);
+      if (setRuleDetailsLoading) setRuleDetailsLoading(true);
+      
+      // Try to find the rule in the already loaded rules first
+      const existingRule = semgrepRules.find(rule => rule.id === ruleId);
+      if (existingRule) {
+        setSelectedRule(existingRule);
+        return;
       }
+      
+      // If not found, fetch from API
+      const response = await axios.get(`http://localhost:8000/api/v1/scan/semgrep-rule/${ruleId}`);
+      setSelectedRule(response.data);
+    } catch (error) {
+      console.error('Error fetching rule details:', error);
+    } finally {
+      setLoadingRuleDetails(false);
+      if (setRuleDetailsLoading) setRuleDetailsLoading(false);
+    }
+  }, [semgrepRules, setSelectedRule, setRuleDetailsLoading]);
+  
+  const handleRuleSelect = useCallback((event: React.SyntheticEvent, value: any) => {
+    if (value && value.id) {
+      console.log("Selected rule:", value);
+      fetchRuleById(value.id);
     } else {
-      // If no rule is selected, clear the selection
       setSelectedRule(null);
-      setTempSelectedRule(null);
+    }
+  }, [fetchRuleById, setSelectedRule]);
+  
+  // Function to clear the selected rule
+  const handleClearRule = useCallback(() => {
+    setSelectedRule(null);
+    setTempSelectedRule(null);
+    setSearchQuery('');
+  }, [setSelectedRule]);
+  
+  // Function to get label for a rule
+  const getRuleLabel = (rule: any) => {
+    const id = rule.id || "Unknown ID";
+    const name = rule.name || id;
+    const category = rule.category || (rule.metadata && rule.metadata.category) || "";
+    const severity = rule.severity || (rule.metadata && rule.metadata.severity) || "UNKNOWN";
+    
+    return `${name} (${category ? category + " - " : ""}${severity})`;
+  };
+  
+  // Function to get icon for a rule based on its category
+  const getRuleIcon = (rule: any) => {
+    const category = (rule.category || "").toLowerCase();
+    
+    if (category.includes("secur") || category.includes("inject") || category.includes("xss")) {
+      return <SecurityIcon color="error" fontSize="small" />;
+    } else if (category.includes("perf") || category.includes("optimiz")) {
+      return <SpeedIcon color="warning" fontSize="small" />;
+    } else {
+      return <CheckCircleIcon color="info" fontSize="small" />;
     }
   };
-
+  
   return (
-    <>
-      <Autocomplete
-        id="semgrep-rules"
-        options={semgrepRules}
-        loading={loadingRules}
-        value={tempSelectedRule || selectedRule}
-        onChange={handleRuleSelection}
-        getOptionLabel={(option) => option?.id || ''}
-        filterOptions={(x) => x} // Disable built-in filtering as we do server-side filtering
-        ListboxProps={{
-          onScroll: handleScroll,
-          ref: listboxRef
-        }}
-        ref={autocompleteRef}
-        renderInput={(params) => (
-          <TextField
-            {...params}
-            label="Select Semgrep Rule"
-            InputProps={{
-              ...params.InputProps,
-              startAdornment: (
-                <>
-                  <InputAdornment position="start">
-                    <SearchIcon />
-                  </InputAdornment>
-                  {params.InputProps.startAdornment}
-                </>
-              ),
-              endAdornment: (
-                <>
-                  {(loadingRules || loadingRuleDetails) ? <CircularProgress color="inherit" size={20} /> : null}
-                  {params.InputProps.endAdornment}
-                </>
-              ),
-            }}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-            }}
-            helperText={loadingRuleDetails ? "Loading rule details..." : `Search and select a rule from the Semgrep registry (${semgrepRules.length} of ${totalRules} rules loaded)`}
-          />
-        )}
-        renderOption={(props, option) => {
-          if (!option) return <li {...props}>Missing rule data</li>;
+    <Paper 
+      elevation={1} 
+      sx={{ 
+        p: 2.5, 
+        borderRadius: 2,
+        background: theme.palette.mode === 'dark' 
+          ? 'rgba(36,36,36,0.9)' 
+          : 'linear-gradient(to right, rgba(250,250,255,0.9), rgba(245,245,255,0.7))',
+        border: `1px solid ${theme.palette.divider}`
+      }}
+    >
+      <Grid container spacing={2}>
+        <Grid item xs={12}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography 
+              variant="subtitle1" 
+              fontWeight="bold" 
+              sx={{ 
+                display: 'flex', 
+                alignItems: 'center',
+                color: theme.palette.text.primary,
+              }}
+            >
+              <SecurityIcon 
+                sx={{ 
+                  mr: 1, 
+                  color: theme.palette.primary.main
+                }} 
+              />
+              Select Semgrep Rule
+            </Typography>
+            
+            {selectedRule && (
+              <IconButton 
+                size="small" 
+                onClick={handleClearRule}
+                color="primary"
+                sx={{ 
+                  bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+                  '&:hover': {
+                    bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)'
+                  }
+                }}
+              >
+                <ClearIcon fontSize="small" />
+              </IconButton>
+            )}
+          </Box>
           
-          // Check for incomplete rule data
-          const isIncompleteRule = !option.name || !option.description || !option.languages || !Array.isArray(option.languages) || option.languages.length === 0;
-          
-          if (isIncompleteRule) {
-            return (
+          <Autocomplete
+            id="semgrep-rule-selector"
+            options={semgrepRules}
+            getOptionLabel={(option) => getRuleLabel(option)}
+            value={tempSelectedRule}
+            onChange={handleRuleSelect}
+            loading={loadingRules}
+            filterOptions={(x) => x} // Disable client-side filtering, we're using the API
+            onInputChange={(event, newInputValue) => {
+              if (event) {
+                setSearchQuery(newInputValue);
+              }
+            }}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                variant="outlined"
+                placeholder="Search for rules..."
+                fullWidth
+                InputProps={{
+                  ...params.InputProps,
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon color="action" />
+                    </InputAdornment>
+                  ),
+                  endAdornment: (
+                    <>
+                      {loadingRules ? <CircularProgress color="inherit" size={20} /> : null}
+                      {params.InputProps.endAdornment}
+                    </>
+                  ),
+                }}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    borderRadius: 2,
+                    backgroundColor: theme.palette.background.paper,
+                    '&.Mui-focused': {
+                      borderColor: theme.palette.primary.main,
+                      boxShadow: `0 0 0 2px ${theme.palette.primary.main}25`
+                    }
+                  }
+                }}
+              />
+            )}
+            renderOption={(props, option) => (
               <li {...props}>
-                <Box sx={{ width: '100%' }}>
-                  <Typography variant="body1" fontWeight="bold">
-                    Rule: {option.id || 'Unknown ID'}
-                  </Typography>
-                  <Box display="flex" flexWrap="wrap" gap={0.75} mt={1}>
-                    <Chip 
-                      size="small" 
-                      label={`id:${option.id}`} 
-                      variant="outlined" 
-                      color="primary"
-                    />
-                    {option.path && (
-                      <Chip
-                        size="small"
-                        label={`Path: ${option.path.split('/').pop()}`}
-                        variant="outlined"
-                      />
-                    )}
+                <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                  <Box sx={{ mr: 1 }}>{getRuleIcon(option)}</Box>
+                  <Box sx={{ flexGrow: 1 }}>
+                    <Typography variant="body2" fontWeight="bold">{option.name || option.id}</Typography>
+                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                      {option.category || (option.metadata && option.metadata.category) || "General"}
+                    </Typography>
+                  </Box>
+                  <Box 
+                    sx={{ 
+                      borderRadius: 1, 
+                      px: 0.8, 
+                      py: 0.2, 
+                      fontSize: '0.7rem', 
+                      fontWeight: 'bold',
+                      backgroundColor: option.severity === 'ERROR' || option.severity === 'HIGH'
+                        ? 'error.main'
+                        : option.severity === 'WARNING' || option.severity === 'MEDIUM'
+                        ? 'warning.main'
+                        : 'info.main',
+                      color: 'white'
+                    }}
+                  >
+                    {option.severity || "INFO"}
                   </Box>
                 </Box>
               </li>
-            );
-          }
-          
-          return (
-            <li {...props}>
-              <Box sx={{ width: '100%' }}>
-                <Typography variant="body1" fontWeight="bold">
-                  Rule ID: {option.id}
-                </Typography>
-                
-                <Box display="flex" flexWrap="wrap" gap={0.75} mt={1}>
-                  {option.id && (
-                    <Chip 
-                      size="small" 
-                      label={`id:${option.id}`} 
-                      variant="outlined" 
-                      color="primary"
-                    />
-                  )}
-                  
-                  {option.path && (
-                    <Chip 
-                      size="small" 
-                      label={`Path: ${option.path}`} 
-                      variant="outlined"
-                      color="success"
-                    />
-                  )}
-                  
-                  {option.message && (
-                    <Chip
-                      size="small"
-                      label="Has message"
-                      color="success"
-                      variant="outlined"
-                    />
-                  )}
-                  
-                  {option.patterns && option.patterns.length > 0 && (
-                    <Chip
-                      size="small"
-                      label="Has patterns"
-                      color="info"
-                      variant="outlined"
-                    />
-                  )}
-                </Box>
-                
-                {/* Languages - Priority given to meta.languages */}
-                {(option.meta && Array.isArray(option.meta.languages) && option.meta.languages.length > 0) || 
-                  (Array.isArray(option.languages) && option.languages.length > 0) ? (
-                  <Box display="flex" flexWrap="wrap" gap={0.5} mt={1}>
-                    <Typography variant="caption" sx={{ mr: 1, alignSelf: 'center' }}>
-                      Languages:
-                    </Typography>
-                    {/* Prioritize meta.languages over languages */}
-                    {((option.meta && Array.isArray(option.meta.languages)) 
-                      ? option.meta.languages 
-                      : option.languages || []).map((lang: string, idx: number) => (
-                      <Chip 
-                        key={idx} 
-                        label={lang} 
-                        size="small" 
-                        variant="outlined" 
-                        color="secondary"
-                        sx={{ height: 20, fontSize: '0.7rem' }}
-                      />
-                    ))}
-                  </Box>
-                ) : null}
-              </Box>
-            </li>
-          );
-        }}
-        ListboxComponent={(props) => (
-          <ul {...props}>
-            {props.children}
-            {hasMore && (
-              <ListSubheader style={{ textAlign: 'center', background: 'transparent' }}>
-                {loadingRules ? (
-                  <CircularProgress size={24} />
-                ) : (
-                  <Typography variant="caption">Scroll to load more</Typography>
-                )}
-              </ListSubheader>
             )}
-          </ul>
-        )}
-      />
-    </>
+            ListboxProps={{
+              ref: listboxRef,
+              onScroll: handleScroll
+            }}
+            sx={{ 
+              width: '100%',
+              '& .MuiAutocomplete-listbox': {
+                maxHeight: '350px',
+                scrollbarWidth: 'thin',
+                '&::-webkit-scrollbar': {
+                  width: '6px',
+                },
+                '&::-webkit-scrollbar-track': {
+                  background: theme.palette.mode === 'dark' ? '#333' : '#f1f1f1',
+                  borderRadius: '10px'
+                },
+                '&::-webkit-scrollbar-thumb': {
+                  background: theme.palette.mode === 'dark' ? '#666' : '#888',
+                  borderRadius: '10px',
+                  '&:hover': {
+                    background: theme.palette.mode === 'dark' ? '#555' : '#777'
+                  }
+                }
+              }
+            }}
+          />
+          
+          {/* Rule counter */}
+          <Typography 
+            variant="caption" 
+            sx={{ 
+              display: 'block', 
+              textAlign: 'right', 
+              color: 'text.secondary', 
+              mt: 1 
+            }}
+          >
+            {loadingRules 
+              ? 'Loading rules...' 
+              : `Showing ${semgrepRules.length} of ${totalRules} rules`}
+          </Typography>
+        </Grid>
+      </Grid>
+    </Paper>
   );
 };
 

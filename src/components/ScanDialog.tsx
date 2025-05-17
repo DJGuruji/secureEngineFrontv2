@@ -25,6 +25,7 @@ interface ScanDialogProps {
   loadingCodeQLUpload: boolean;
   loadingCodeQLProcessing: boolean;
   runningAllSast: boolean;
+  loadingAiScan?: boolean;
 }
 
 const ScanDialog: React.FC<ScanDialogProps> = ({
@@ -39,10 +40,20 @@ const ScanDialog: React.FC<ScanDialogProps> = ({
   loadingShiftLeftProcessing,
   loadingCodeQLUpload,
   loadingCodeQLProcessing,
-  runningAllSast
+  runningAllSast,
+  loadingAiScan = false
 }) => {
-  // Determine which results to display - use combinedResults if available
-  const resultsToDisplay = combinedResults || scanResults;
+  // Determine if this is an AI scan based on metadata
+  const isAiScan = scanResults?.scan_metadata?.scan_type === 'AI';
+  
+  // Determine which results to display
+  // Priority: AI Scan > Combined Results > Individual Scan
+  const resultsToDisplay = isAiScan ? scanResults : (combinedResults || scanResults);
+  
+  // Get the scan type for title display
+  const scanType = isAiScan ? 'AI' : 
+                  combinedResults ? 'Combined' :
+                  scanResults?.scan_metadata?.scan_type || 'Security';
   
   return (
     <Dialog 
@@ -54,12 +65,13 @@ const ScanDialog: React.FC<ScanDialogProps> = ({
       <DialogTitle>
         <Box display="flex" justifyContent="space-between" alignItems="center">
           <Typography variant="h6">
-            {combinedResults ? 'Combined Security Analysis Results' : 
-             scanResults?.scan_metadata?.scan_type === 'CodeQL' ? 'CodeQL Scan Results' : 
-             scanResults?.scan_metadata?.scan_type === 'ShiftLeft' ? 'ShiftLeft Scan Results' : 
-             scanResults?.scan_metadata?.scan_type === 'AI' ? 'AI Security Analysis Results' :
+            {scanType === 'AI' ? 'AI Security Analysis Results' : 
+             scanType === 'Combined' ? 'Combined Security Analysis Results' : 
+             scanType === 'CodeQL' ? 'CodeQL Scan Results' : 
+             scanType === 'ShiftLeft' ? 'ShiftLeft Scan Results' : 
              'Security Scan Results'}
-            {combinedResults && (
+            
+            {scanType === 'Combined' && (
               <Typography 
                 variant="subtitle1" 
                 component="span" 
@@ -79,13 +91,14 @@ const ScanDialog: React.FC<ScanDialogProps> = ({
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', p: 3, gap: 2 }}>
             <CircularProgress />
             <Typography variant="body1" sx={{ textAlign: 'center' }}>
-              {loadingSastUpload ? 'Uploading file for Semgrep scan...' : 
+              {loadingAiScan ? 'Running AI security analysis...' :
+               loadingSastUpload ? 'Uploading file for Semgrep scan...' : 
                loadingSastProcessing ? 'Running Semgrep security analysis...' : 
                loadingShiftLeftUpload ? 'Uploading file for ShiftLeft scan...' : 
                loadingShiftLeftProcessing ? 'Running ShiftLeft security analysis...' : 
                loadingCodeQLUpload ? 'Uploading file for CodeQL scan...' : 
                loadingCodeQLProcessing ? 'Running CodeQL security analysis...' : 
-               'Running SAST security analysis...'}
+               'Running security analysis...'}
             </Typography>
             
             {runningAllSast && (
