@@ -118,11 +118,11 @@ const CreditsInfo: React.FC<CreditsInfoProps> = ({ onUpdate }) => {
             </Tooltip>
           </Box>
           
-          <Box display="flex" alignItems="center" mb={1}>
+          {/* <Box display="flex" alignItems="center" mb={1}>
             <Typography variant="body2" color="text.secondary" mr={1}>
               Total Credits: {creditInfo.total_credits}
             </Typography>
-          </Box>
+          </Box> */}
           
           <Box display="flex" alignItems="center">
             <Typography variant="body2" color="text.secondary" mr={1}>

@@ -30,6 +30,7 @@ import { startAiScan } from './components/ScanFunctions';
 import { combineAndStoreResults } from './components/CombineResults';
 import { createProcessingButtonStyle, createUploadingButtonStyle } from './styles/animations';
 import CreditsInfo from './components/CreditsInfo';
+import ConfirmationModal from './components/ConfirmationModal';
 
 const API_UPLOAD_URL = 'http://localhost:8000/api/v1/scan/upload';
 const API_SCAN_URL = 'http://localhost:8000/api/v1/scan/scan';
@@ -246,6 +247,7 @@ function App() {
   const [resultsButtonClicked, setResultsButtonClicked] = useState<boolean>(false);
   // State for credit info refresh trigger
   const [creditsRefreshTrigger, setCreditsRefreshTrigger] = useState<number>(0);
+  const [aiScanConfirmOpen, setAiScanConfirmOpen] = useState<boolean>(false);
   
   // Function to run all scanners
   const runAllScanners = async () => {
@@ -523,25 +525,8 @@ function App() {
                     isAnyScanLoading={isAnyScanLoading}
                     runAllScanners={runAllScanners}
                     startAiScan={() => {
-                      // Set loading states for AI scan
-                      setLoadingAiScan(true);
-                      
-                      startAiScan({
-                        uploadedFile,
-                        setScanResults: (results) => {
-                          setScanResults(results);
-                          setAiScanResults(results);
-                          setCombinedResults(null); // Clear combined results when showing AI results
-                        },
-                        setError,
-                        setScanStarted,
-                        setDialogOpen,
-                        setLoadingUpload: () => {}, // These are handled directly here
-                        setLoadingProcessing: () => {}, // These are handled directly here
-                        setCreditsRefreshTrigger
-                      }).finally(() => {
-                        setLoadingAiScan(false);
-                      });
+                      // Show confirmation dialog instead of starting scan immediately
+                      setAiScanConfirmOpen(true);
                     }}
                     loadingSastUpload={loadingSastUpload}
                     loadingSastProcessing={loadingSastProcessing}
@@ -590,6 +575,46 @@ function App() {
         loadingCodeQLProcessing={loadingCodeQLProcessing}
         runningAllSast={runningAllSast}
         loadingAiScan={loadingAiScan}
+      />
+      
+      <ConfirmationModal
+        open={aiScanConfirmOpen}
+        title="Confirm AI Scan"
+        message={
+          <Box>
+            <Typography variant="body1" paragraph>
+              This AI scan will deduct <strong>4 credits</strong> from your account.
+            </Typography>
+            <Typography variant="body1">
+              Do you want to proceed with the scan?
+            </Typography>
+          </Box>
+        }
+        onConfirm={() => {
+          setAiScanConfirmOpen(false);
+          // Set loading states for AI scan
+          setLoadingAiScan(true);
+          
+          startAiScan({
+            uploadedFile,
+            setScanResults: (results) => {
+              setScanResults(results);
+              setAiScanResults(results);
+              setCombinedResults(null); // Clear combined results when showing AI results
+            },
+            setError,
+            setScanStarted,
+            setDialogOpen,
+            setLoadingUpload: () => {}, // These are handled directly here
+            setLoadingProcessing: () => {}, // These are handled directly here
+            setCreditsRefreshTrigger
+          }).finally(() => {
+            setLoadingAiScan(false);
+          });
+        }}
+        onCancel={() => setAiScanConfirmOpen(false)}
+        confirmText="Yes, Proceed"
+        cancelText="Cancel"
       />
     </Container>
   );
