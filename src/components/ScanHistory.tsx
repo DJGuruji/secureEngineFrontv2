@@ -59,15 +59,20 @@ interface ScanHistoryItem {
   scan_duration: number;
   scan_status: string;
   scan_metadata?: {
-    scan_type: 'CodeQL' | 'ShiftLeft' | 'Semgrep' | 'Combined SAST' | 'AI';
+    scan_type: 'CodeQL' | 'ShiftLeft' | 'Semgrep' | 'Combined SAST' | 'combined sast' | 'AI' | 'Combined SAST & AI' | 'SAST & AI';
     scan_mode?: 'custom' | 'auto' | 'gemini';
     language?: string;
+    isCombinedScan?: boolean;
     individual_durations?: {
       semgrep?: number;
       codeql?: number;
       shiftleft?: number;
     };
+    sast_metadata?: any;
+    ai_metadata?: any;
   };
+  sast_scan_id?: string;
+  ai_scan_id?: string;
 }
 
 interface ComparisonResult {
@@ -132,34 +137,27 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
   const fetchHistory = async () => {
     setLoading(true);
     try {
-      const { data } = await axios.get<{
-        items: ScanHistoryItem[];
-        total: number;
-      }>(`${API_BASE_URL}/history`, {
-        params: { limit: rowsPerPage, offset: page * rowsPerPage },
-      });
-
-      // Support showing both combined SAST and AI scan results
-      let filteredData;
+      // Only fetch combined scans history
+      const { data: combinedScans } = await axios.get<ScanHistoryItem[]>(
+        `${API_BASE_URL}/combined-scans`,
+        {
+          params: { limit: rowsPerPage, offset: page * rowsPerPage },
+        }
+      );
       
-      // Support both paginated (items+total) and bare array responses
-      if (Array.isArray(data)) {
-        filteredData = data.filter(scan => 
-          scan.scan_metadata?.scan_type === 'Combined SAST' ||
-          scan.scan_metadata?.scan_type === 'AI'
-        );
-        setHistory(filteredData);
-        setTotalCount(filteredData.length);
+      // Process the combined scans
+      if (Array.isArray(combinedScans)) {
+        setHistory(combinedScans);
+        setTotalCount(combinedScans.length);
       } else {
-        filteredData = data.items.filter(scan => 
-          scan.scan_metadata?.scan_type === 'Combined SAST' ||
-          scan.scan_metadata?.scan_type === 'AI'
-        );
-        setHistory(filteredData);
-        setTotalCount(filteredData.length); // We set the count to the filtered length, not the total from API
+        // Handle empty or non-array response
+        setHistory([]);
+        setTotalCount(0);
       }
     } catch (err) {
       console.error('Error fetching scan history:', err);
+      setHistory([]);
+      setTotalCount(0);
     } finally {
       setLoading(false);
     }
@@ -167,7 +165,9 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
 
   const deleteScan = async (scanId: string) => {
     try {
-      await axios.delete(`${API_BASE_URL}/scan/${scanId}`);
+      // All scans in this component are now from combined_scans table
+      // so we should always use the combined-scan endpoint
+      await axios.delete(`${API_BASE_URL}/combined-scan/${scanId}`);
       await fetchHistory(); // refresh
     } catch (err: any) {
       console.error('Error deleting scan:', err);
@@ -182,7 +182,7 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
     setLoadingComparison(true);
     try {
       const { data } = await axios.get<ComparisonResult>(
-        `${API_BASE_URL}/compare/${scanId}`
+        `${API_BASE_URL}/combined-scan-compare/${scanId}`
       );
       setComparisonResult(data);
       setCompareDialogOpen(true);
@@ -329,8 +329,10 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
                               ? 'ShiftLeft Analysis'
                               : scan.scan_metadata?.scan_type === 'AI'
                               ? 'AI Security Analysis'
-                              : scan.scan_metadata?.scan_type === 'Combined SAST'
+                              : scan.scan_metadata?.scan_type === 'Combined SAST' || scan.scan_metadata?.scan_type === 'combined sast'
                               ? 'Combined SAST Analysis'
+                              : scan.scan_metadata?.scan_type === 'Combined SAST & AI' || scan.scan_metadata?.scan_type === 'SAST & AI'
+                              ? 'Combined SAST & AI Analysis'
                               : `Semgrep ${
                                   scan.scan_metadata?.scan_mode === 'custom'
                                     ? 'Custom Rules'
@@ -357,6 +359,18 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
                               Mode: {scan.scan_metadata.scan_mode}
                             </Typography>
                           )}
+                          
+                          {scan.scan_metadata?.isCombinedScan && (
+                            <Typography
+                              variant="caption"
+                              component="span"
+                              display="block"
+                            >
+                              Combined ID: {scan.id}<br/>
+                              SAST ID: {scan.sast_scan_id}<br/>
+                              AI ID: {scan.ai_scan_id}
+                            </Typography>
+                          )}
                         </>
                       }
                     >
@@ -368,9 +382,11 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
                             : scan.scan_metadata?.scan_type === 'ShiftLeft'
                             ? 'ShiftLeft'
                             : scan.scan_metadata?.scan_type === 'AI'
-                            ? 'AI Scan'
-                            : scan.scan_metadata?.scan_type === 'Combined SAST'
-                            ? 'Combined SAST'
+                            ? 'Ai'
+                            : scan.scan_metadata?.scan_type === 'Combined SAST' || scan.scan_metadata?.scan_type === 'combined sast'
+                            ? 'SAST'
+                            : scan.scan_metadata?.scan_type === 'Combined SAST & AI' || scan.scan_metadata?.scan_type === 'SAST & AI'
+                            ? 'SAST & AI'
                             : 'Semgrep'
                         }
                         color={
@@ -380,8 +396,10 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
                             ? 'success'
                             : scan.scan_metadata?.scan_type === 'AI'
                             ? 'warning'
-                            : scan.scan_metadata?.scan_type === 'Combined SAST'
+                            : scan.scan_metadata?.scan_type === 'Combined SAST' || scan.scan_metadata?.scan_type === 'combined sast'
                             ? 'info'
+                            : scan.scan_metadata?.scan_type === 'Combined SAST & AI' || scan.scan_metadata?.scan_type === 'SAST & AI'
+                            ? 'error'
                             : 'primary'
                         }
                         sx={{ fontWeight: 'medium' }}
@@ -713,7 +731,7 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
                           </Grid>
                           
                           {/* Display notes from Exploit DB report */}
-                          {exploit.notes && (
+                          {/* {exploit.notes && (
                             <Box mt={2} bgcolor="#f5f5f5" p={2} borderRadius={1}>
                               <Typography variant="subtitle2" gutterBottom>
                                 Exploit DB Notes:
@@ -722,7 +740,7 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
                                 {exploit.notes}
                               </Typography>
                             </Box>
-                          )}
+                          )} */}
                           
                           {/* Display vulnerabilities mentioned in Exploit DB */}
                           {exploit.vulnerabilities?.length > 0 && (

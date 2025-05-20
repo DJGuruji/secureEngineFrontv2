@@ -194,19 +194,25 @@ function App() {
       setCodeQLResults(null);
       setAiScanResults(null);
       
-      const response = await fetch(`${API_SCAN_URL}/${scanId}`);
+      // Use the combined-scan endpoint instead of scan endpoint
+      const response = await fetch(`http://localhost:8000/api/v1/scan/combined-scan/${scanId}`);
       if (!response.ok) {
         throw new Error('Failed to fetch scan details');
       }
       
       const data = await response.json();
       
-      // Determine scan type based on metadata
+      // Determine scan type based on metadata - handle the new formats from combined_scans table
       if (data?.scan_metadata?.scan_type === 'AI') {
         setAiScanResults(data);
         setCombinedResults(null); // Make sure combined results are not shown
-      } else if (data?.scan_metadata?.scan_type === 'Combined') {
+      } else if (data?.scan_metadata?.scan_type === 'combined sast' || 
+                data?.scan_metadata?.scan_type === 'Combined SAST') {
         setCombinedResults(data);
+      } else if (data?.scan_metadata?.scan_type === 'SAST & AI') {
+        // This is a combined SAST + AI scan
+        setCombinedResults(data);
+        setAiScanResults(data); // Also set AI results since it contains both
       } else {
         // Individual scan types (Semgrep, ShiftLeft, CodeQL)
         switch (data?.scan_metadata?.scan_type) {
@@ -219,12 +225,16 @@ function App() {
           case 'CodeQL':
             setCodeQLResults(data);
             break;
+          default:
+            // If we can't determine type, show as combined results
+            setCombinedResults(data);
         }
       }
       
       setScanResults(data);
       setDialogOpen(true);
     } catch (err) {
+      console.error('Error loading scan details:', err);
       setError('Failed to load scan details. Please try again.');
     } finally {
       setLoadingSastProcessing(false);

@@ -85,14 +85,14 @@ const CreditsInfo: React.FC<CreditsInfoProps> = ({ onUpdate }) => {
           <CreditScoreIcon color="primary" sx={{ mr: 1 }} />
           <Typography variant="h6">AI Scan Credits</Typography>
         </Box>
-        <Button
+        {/* <Button
           startIcon={<AddIcon />}
           variant="contained"
           size="small"
           onClick={() => setOpenDialog(true)}
         >
           Add Credits
-        </Button>
+        </Button> */}
       </Box>
 
       {loading ? (
@@ -105,7 +105,7 @@ const CreditsInfo: React.FC<CreditsInfoProps> = ({ onUpdate }) => {
         </Alert>
       ) : creditInfo ? (
         <Box>
-          <Box display="flex" alignItems="center" mb={1}>
+          {/* <Box display="flex" alignItems="center" mb={1}>
             <Typography variant="body1" mr={1}>
               Remaining Credits:
             </Typography>
@@ -116,7 +116,7 @@ const CreditsInfo: React.FC<CreditsInfoProps> = ({ onUpdate }) => {
                 size="medium"
               />
             </Tooltip>
-          </Box>
+          </Box> */}
           
           {/* <Box display="flex" alignItems="center" mb={1}>
             <Typography variant="body2" color="text.secondary" mr={1}>
