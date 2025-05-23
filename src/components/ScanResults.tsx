@@ -211,10 +211,10 @@ const ScanResults: React.FC<ScanResultsProps> = ({ results }) => {
                     : 'N/A'}
                 </Typography>
               </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              {/* <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <TimerIcon color="action" />
                 <Typography variant="body1">Duration: {formatDuration(scan_duration)}</Typography>
-              </Box>
+              </Box> */}
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <SecurityIcon color="action" />
                 <Typography variant="body1">

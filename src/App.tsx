@@ -497,16 +497,19 @@ function App() {
           <TabPanel value={tabValue} index={0}>
             <CreditsInfo key={creditsRefreshTrigger} onUpdate={() => setCreditsRefreshTrigger(prev => prev + 1)} />
             
-            <FileUpload
-              getRootProps={getRootProps}
-              getInputProps={getInputProps}
-              isDragActive={isDragActive}
-              loading={isAnyScanLoading}
-            />
+            <Box>
+              <FileUpload
+                getRootProps={getRootProps}
+                getInputProps={getInputProps}
+                isDragActive={isDragActive}
+                loading={isAnyScanLoading}
+                uploadedFile={uploadedFile}
+              />
+            </Box>
             
             {uploadedFile && (
               <Box sx={{ mt: 3 }}>
-                <FormControl component="fieldset" sx={{ mb: 3 }}>
+                {/* <FormControl component="fieldset" sx={{ mb: 3 }}>
                   <FormLabel component="legend">SemGrep Scan Rule Type</FormLabel>
                   <RadioGroup
                     value={ruleType}
@@ -515,9 +518,9 @@ function App() {
                     <FormControlLabel value="auto" control={<Radio />} label="Default (Auto)" />
                     <FormControlLabel value="custom" control={<Radio />} label="Custom Semgrep Rule" />
                   </RadioGroup>
-                </FormControl>
+                </FormControl> */}
                 
-                {ruleType === 'custom' && (
+                {/* {ruleType === 'custom' && (
                   <Box sx={{ mb: 3 }}>
                     <SemgrepRuleSelector
                       selectedRule={selectedRule}
@@ -527,7 +530,7 @@ function App() {
                     
                     {selectedRule && <RuleDetails selectedRule={selectedRule} />}
                   </Box>
-                )}
+                )} */}
                 
                 <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2 }}>
                   <ScanActions 
