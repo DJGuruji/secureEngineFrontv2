@@ -103,19 +103,16 @@ interface ComparisonResult {
 
 interface ExploitDbResult {
   title: string;
-  exploit_id: string;
   description: string;
   date: string;
-  author: string;
   type: string;
-  platform: string;
   link: string;
   vulnerabilities?: Array<{
     type: string;
     description: string;
   }>;
   cve?: string;
-  notes?: string;
+  cve_url?: string;
   verified?: boolean;
 }
 
@@ -626,7 +623,7 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
                                   "info"
                                 } 
                               />
-                              {vuln.matching_exploitdb_vulnerabilities?.length > 0 && (
+                              {vuln.matching_exploitdb_vulnerabilities && vuln.matching_exploitdb_vulnerabilities.length > 0 && (
                                 <Chip 
                                   size="small" 
                                   icon={<SecurityIcon fontSize="small" />}
@@ -643,7 +640,7 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
                                 {vuln.message}
                               </Typography>
                               
-                              {vuln.matching_exploitdb_vulnerabilities?.length > 0 && (
+                              {vuln.matching_exploitdb_vulnerabilities && vuln.matching_exploitdb_vulnerabilities.length > 0 && (
                                 <Box mt={1} px={2} py={1} bgcolor="#f8f0ff" borderLeft="4px solid" borderColor="secondary.main" borderRadius={1}>
                                   <Typography variant="caption" color="secondary" fontWeight="bold" component="span">
                                     Exploit DB Correlation:
@@ -677,12 +674,28 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
                 {comparisonResult.file_in_exploitdb ? (
                   <List>
                     {comparisonResult.exploitdb_results.map((exploit) => (
-                      <ListItem key={exploit.exploit_id} sx={{ display: 'block', p: 0, mb: 2 }}>
+                      <ListItem key={exploit.link} sx={{ display: 'block', p: 0, mb: 2 }}>
                         <Paper variant="outlined" sx={{ p: 2 }}>
                           <Typography variant="h6" gutterBottom>
                             <Link href={exploit.link} target="_blank" rel="noopener noreferrer">
-                              {exploit.title} ({exploit.exploit_id})
+                              {exploit.title}
                             </Link>
+                          </Typography>
+                          
+                          {/* Add debug information
+                          {process.env.NODE_ENV === 'development' && (
+                            <Box mt={1} p={1} bgcolor="#f5f5f5">
+                              <Typography variant="caption" component="div">
+                                Debug Info:
+                                CVE: {exploit.cve || 'Not found'}
+                                URL: {exploit.cve_url || 'Not found'}
+                              </Typography>
+                            </Box>
+                          )}
+                           */}
+                          {/* Basic exploit information */}
+                          <Typography variant="body2" sx={{ mb: 2 }}>
+                            {exploit.description}
                           </Typography>
                           
                           {/* Display CVE information if available */}
@@ -695,28 +708,25 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
                                 icon={<ErrorIcon />} 
                                 sx={{ fontWeight: 'bold' }} 
                               />
-                              <Link 
-                                href={`https://cve.mitre.org/cgi-bin/cvename.cgi?name=${exploit.cve}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                sx={{ ml: 1, fontSize: '0.875rem' }}
-                              >
-                                View CVE details
-                              </Link>
+                              {exploit.cve_url && (
+                                <Link 
+                                  href={exploit.cve_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  sx={{ ml: 1, fontSize: '0.875rem' }}
+                                >
+                                  View CVE details
+                                </Link>
+                              )}
                             </Box>
                           )}
-                          
-                          {/* Basic exploit information */}
-                          <Typography variant="body2" sx={{ mb: 2 }}>
-                            {exploit.description}
-                          </Typography>
                           
                           <Grid container spacing={2} sx={{ mb: 2 }}>
                             <Grid item xs={12} sm={6}>
                               <Box display="flex" flexWrap="wrap" gap={1}>
                                 <Chip label={`Type: ${exploit.type}`} size="small" />
-                                <Chip label={`Platform: ${exploit.platform}`} size="small" />
-                                <Chip label={`Author: ${exploit.author}`} size="small" />
+                              {/* //  <Chip label={`Platform: ${exploit.platform}`} size="small" />
+                                <Chip label={`Author: ${exploit.author}`} size="small" /> */}
                                 <Chip label={`Date: ${exploit.date}`} size="small" />
                                 {exploit.verified && (
                                   <Chip 
@@ -743,7 +753,7 @@ const ScanHistory: React.FC<ScanHistoryProps> = ({ onViewScan }) => {
                           )} */}
                           
                           {/* Display vulnerabilities mentioned in Exploit DB */}
-                          {exploit.vulnerabilities?.length > 0 && (
+                          {exploit.vulnerabilities && exploit.vulnerabilities.length > 0 && (
                             <Box mt={2}>
                               <Typography variant="subtitle2" gutterBottom color="error">
                                 Vulnerabilities Documented in Exploit DB Report:

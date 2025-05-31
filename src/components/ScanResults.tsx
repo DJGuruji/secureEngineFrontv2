@@ -44,10 +44,15 @@ import { format } from 'date-fns';
 /* ------------------------------------------------------------------ */
 
 const SeverityIcon = ({ severity }: { severity: string }) => {
-  switch (severity) {
+  const normalizedSeverity = severity?.toUpperCase() || 'INFO';
+  switch (normalizedSeverity) {
     case 'ERROR':
+    case 'HIGH':
+    case 'CRITICAL':
       return <ErrorIcon color="error" />;
     case 'WARNING':
+    case 'MEDIUM':
+    case 'MODERATE':
       return <WarningIcon color="warning" />;
     default:
       return <InfoIcon color="info" />;
@@ -67,33 +72,42 @@ const RiskIndicator = ({ severity }: { severity: number }) => {
 };
 
 /* ------------------------------------------------------------------ */
-/*  main component                                                    */
+/*  interfaces                                                        */
 /* ------------------------------------------------------------------ */
+
+interface Vulnerability {
+  check_id: string;
+  path: string;
+  start: { line: number; col?: number };
+  end: { line: number; col?: number };
+  message?: string;
+  severity?: string;
+  description?: string;
+  code_snippet?: string;
+  remediation?: string;
+  extra?: {
+    message?: string;
+    severity?: string;
+    metadata?: {
+      owasp?: string;
+      cwe?: string;
+      category?: string;
+    };
+    description?: string;
+    code_snippet?: string;
+    remediation?: string;
+  };
+  risk_severity?: number;
+  exploitability?: string;
+  impact?: string;
+  detection_timestamp?: string;
+  source?: string;
+}
 
 interface ScanResultsProps {
   results: {
     security_score: number;
-    vulnerabilities: Array<{
-      check_id: string;
-      path: string;
-      start: { line: number };
-      end: { line: number };
-      extra: { 
-        message: string; 
-        severity: string;
-        owasp_category?: string;
-        cwe_id?: string;
-        description?: string;
-        code_snippet?: string;
-        remediation?: string;
-     //   references?: string[];
-      };
-      risk_severity: number;
-      exploitability: string;
-      impact: string;
-      detection_timestamp: string;
-      source?: string;
-    }>;
+    vulnerabilities: Vulnerability[];
     severity_count: { ERROR: number; WARNING: number; INFO: number };
     scan_timestamp?: string;
     scan_duration?: number;
@@ -106,13 +120,17 @@ interface ScanResultsProps {
       scan_mode?: string;
       scan_sources?: string[];
       individual_scores?: {
-        semgrep: number;
-        shiftleft: number;
-        codeql: number;
+        semgrep?: number;
+        shiftleft?: number;
+        codeql?: number;
       };
     };
   };
 }
+
+/* ------------------------------------------------------------------ */
+/*  main component                                                    */
+/* ------------------------------------------------------------------ */
 
 const ScanResults: React.FC<ScanResultsProps> = ({ results }) => {
   const [expandedPanel, setExpandedPanel] = useState<string | false>('vulnerable');
@@ -131,7 +149,8 @@ const ScanResults: React.FC<ScanResultsProps> = ({ results }) => {
   } = results;
 
   // Check if this is a combined scan
-  const isCombinedScan = scan_metadata?.scan_type === 'Combined SAST';
+  const isCombinedScan = scan_metadata?.scan_type?.includes('Combined');
+  const isAIScan = scan_metadata?.scan_type?.includes('AI');
   const individualScores = isCombinedScan ? scan_metadata?.individual_scores : null;
 
   /* utilities */
@@ -142,6 +161,28 @@ const ScanResults: React.FC<ScanResultsProps> = ({ results }) => {
     return `${m}m ${s}s`;
   };
   const validDate = (d?: string) => (d && !isNaN(Date.parse(d)) ? new Date(d) : undefined);
+
+  // Helper to get vulnerability message
+  const getVulnMessage = (vuln: Vulnerability) => {
+    return vuln.message || vuln.extra?.message || 'Unknown vulnerability';
+  };
+
+  // Helper to get vulnerability severity
+  const getVulnSeverity = (vuln: Vulnerability) => {
+    return (vuln.severity || vuln.extra?.severity || 'INFO').toUpperCase();
+  };
+
+  // Helper to get metadata
+  const getVulnMetadata = (vuln: Vulnerability) => {
+    return {
+      owasp: vuln.extra?.metadata?.owasp,
+      cwe: vuln.extra?.metadata?.cwe,
+      category: vuln.extra?.metadata?.category || 'Security',
+      description: vuln.description || vuln.extra?.description || vuln.message || vuln.extra?.message,
+      code_snippet: vuln.code_snippet || vuln.extra?.code_snippet,
+      remediation: vuln.remediation || vuln.extra?.remediation
+    };
+  };
 
   /* ------------------------------------------------------------------ */
   /* render                                                             */
@@ -211,10 +252,10 @@ const ScanResults: React.FC<ScanResultsProps> = ({ results }) => {
                     : 'N/A'}
                 </Typography>
               </Box>
-              {/* <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <TimerIcon color="action" />
                 <Typography variant="body1">Duration: {formatDuration(scan_duration)}</Typography>
-              </Box> */}
+              </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <SecurityIcon color="action" />
                 <Typography variant="body1">
@@ -259,9 +300,9 @@ const ScanResults: React.FC<ScanResultsProps> = ({ results }) => {
               <ListItem alignItems="flex-start" sx={{ flexDirection: 'column', py: 2 }}>
                 {/* Header with severity and title */}
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%', mb: 1 }}>
-                  <SeverityIcon severity={vuln.extra.severity} />
+                  <SeverityIcon severity={getVulnSeverity(vuln)} />
                   <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-                    {vuln.extra.message}
+                    {getVulnMessage(vuln)}
                   </Typography>
                 </Box>
                 
@@ -270,29 +311,35 @@ const ScanResults: React.FC<ScanResultsProps> = ({ results }) => {
                   <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                     {/* Risk metrics row */}
                     <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
-                      <RiskIndicator severity={vuln.risk_severity} />
-                      <Chip
-                        icon={<BugReportIcon sx={{ fontSize: '1.2rem' }} />}
-                        label={`Exploitability: ${vuln.exploitability}`}
-                        size="small"
-                      />
-                      <Chip
-                        icon={<TimelineIcon sx={{ fontSize: '1.2rem' }} />}
-                        label={`Impact: ${vuln.impact}`}
-                        size="small"
-                      />
+                      {vuln.risk_severity !== undefined && (
+                        <RiskIndicator severity={vuln.risk_severity} />
+                      )}
+                      {vuln.exploitability && (
+                        <Chip
+                          icon={<BugReportIcon sx={{ fontSize: '1.2rem' }} />}
+                          label={`Exploitability: ${vuln.exploitability}`}
+                          size="small"
+                        />
+                      )}
+                      {vuln.impact && (
+                        <Chip
+                          icon={<TimelineIcon sx={{ fontSize: '1.2rem' }} />}
+                          label={`Impact: ${vuln.impact}`}
+                          size="small"
+                        />
+                      )}
                       
                       {/* OWASP/CWE mapping if available */}
-                      {vuln.extra.owasp_category && (
+                      {getVulnMetadata(vuln).owasp && (
                         <Chip
-                          label={`OWASP: ${vuln.extra.owasp_category}`}
+                          label={`OWASP: ${getVulnMetadata(vuln).owasp}`}
                           color="secondary"
                           size="small"
                         />
                       )}
-                      {vuln.extra.cwe_id && (
+                      {getVulnMetadata(vuln).cwe && (
                         <Chip
-                          label={`CWE: ${vuln.extra.cwe_id}`}
+                          label={`CWE: ${getVulnMetadata(vuln).cwe}`}
                           color="info"
                           size="small"
                         />
@@ -305,19 +352,19 @@ const ScanResults: React.FC<ScanResultsProps> = ({ results }) => {
                     </Typography>
                     
                     {/* Description with business context */}
-                    {vuln.extra.description && (
+                    {getVulnMetadata(vuln).description && (
                       <Box sx={{ mt: 2 }}>
                         <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: 'text.primary' }}>
                           📜 Description
                         </Typography>
                         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, ml: 1 }}>
-                          {vuln.extra.description}
+                          {getVulnMetadata(vuln).description}
                         </Typography>
                       </Box>
                     )}
                     
                     {/* Evidence/Code snippet */}
-                    {vuln.extra.code_snippet && (
+                    {getVulnMetadata(vuln).code_snippet && (
                       <Box sx={{ mt: 2 }}>
                         <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: 'text.primary' }}>
                           🔎 Evidence
@@ -335,19 +382,19 @@ const ScanResults: React.FC<ScanResultsProps> = ({ results }) => {
                             maxHeight: '150px'
                           }}
                         >
-                          <pre style={{ margin: 0 }}>{vuln.extra.code_snippet}</pre>
+                          <pre style={{ margin: 0 }}>{getVulnMetadata(vuln).code_snippet}</pre>
                         </Paper>
                       </Box>
                     )}
                     
                     {/* Remediation guidance */}
-                    {vuln.extra.remediation && (
+                    {getVulnMetadata(vuln).remediation && (
                       <Box sx={{ mt: 2 }}>
                         <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: 'text.primary' }}>
                           ✅ Suggested Remediation
                         </Typography>
                         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, ml: 1 }}>
-                          {vuln.extra.remediation}
+                          {getVulnMetadata(vuln).remediation}
                         </Typography>
                       </Box>
                     )}
@@ -357,12 +404,14 @@ const ScanResults: React.FC<ScanResultsProps> = ({ results }) => {
                       <Typography variant="caption" color="text.secondary">
                         Check ID: {vuln.check_id}
                       </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Detected:{' '}
-                        {validDate(vuln.detection_timestamp)
-                          ? format(validDate(vuln.detection_timestamp)!, 'PPpp')
-                          : 'N/A'}
-                      </Typography>
+                      {vuln.detection_timestamp && (
+                        <Typography variant="caption" color="text.secondary">
+                          Detected:{' '}
+                          {validDate(vuln.detection_timestamp)
+                            ? format(validDate(vuln.detection_timestamp)!, 'PPpp')
+                            : 'N/A'}
+                        </Typography>
+                      )}
                     </Box>
                   </CardContent>
                 </Card>
